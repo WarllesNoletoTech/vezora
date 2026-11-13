@@ -59,6 +59,7 @@ const slug = z.string().trim().min(3).max(45).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const phone = z.string().transform(phoneDigits).pipe(z.string().min(10).max(13));
 const accountData = z.object({name,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
+app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
 app.get('/api/health',(_req,res)=>res.json({status:'ok',name:'Vezora API'}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug}).parse(req.body);
@@ -291,6 +292,8 @@ app.post('/api/payments/webhook/:tenantId',wrap(async(req,res)=>{
     res.status(200).json({received:true});
   }catch(e){console.error('Falha ao reconciliar webhook do MP',e);res.status(503).json({error:'Conciliação indisponível; reenvie o evento'});}
 }));
+
+app.use('/api',(_req,res)=>res.status(404).json({error:'Rota da API nao encontrada. Confirme a versao do backend implantada no Heroku.'}));
 
 app.use((err:unknown,_req:Request,res:Response,_next:NextFunction)=>{
   if(res.headersSent)return;

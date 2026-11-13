@@ -1,7 +1,11 @@
 export async function api<T>(path:string,options:RequestInit={}) :Promise<T>{
   const res=await fetch(`/api${path}`,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})},cache:'no-store'});
-  const value=await res.json().catch(()=>({}));
-  if(!res.ok)throw new Error((value as {error?:string}).error || `Erro ${res.status}`);
+  const isJson=(res.headers.get('content-type')||'').includes('application/json');
+  const value=isJson?await res.json().catch(()=>({})):{};
+  if(!res.ok){
+    if(res.status===404 && !isJson) throw new Error('Rota da API nao encontrada. Verifique o deploy do frontend e o endereco do backend.');
+    throw new Error((value as {error?:string}).error || `Erro ${res.status}`);
+  }
   return value as T;
 }
 export function brl(cents:number){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);}

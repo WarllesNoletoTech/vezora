@@ -46,3 +46,13 @@ No projeto independente `vezora-frontend`, a variável de ambiente **`API_INTERN
 Documentação: https://www.prisma.io/docs/orm/v6/overview/databases/mongodb
 
 > O pacote `prisma` está em `dependencies` (não `devDependencies`) para que `heroku run npm run db:push` funcione mesmo após o Heroku descartar dependências de desenvolvimento.
+
+## Diagnostico do cadastro / erro 404
+
+- A API implementa `POST /api/auth/register` e `GET /api/health`.
+- Abra `https://SEU-BACKEND.herokuapp.com/api/health` no navegador. Deve dar 200 JSON.
+- Se nao funcionar, confirme o deploy do diretorio `vezora-backend` como raiz no Heroku, a configuracao MongoDB e os logs do dyno.
+- Se funcionar, abra `https://SEU-FRONTEND.vercel.app/api/health`. Deve exibir o mesmo JSON.
+- Erro 403 no cadastro geralmente indica `WEB_URL` do Heroku diferente do frontend publico.
+- Erro 409 geralmente indica email ou slug ja registrado.
+- Em producao a API agora retorna JSON 404 para rotas `/api` desconhecidas.

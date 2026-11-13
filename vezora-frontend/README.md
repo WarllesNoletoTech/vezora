@@ -1,22 +1,48 @@
 # vezora-frontend — Vezora (Next.js 15 / Vercel)
 
-Frontend independente para o Vezora. **Não precisa de MongoDB no Vercel.** O frontend chama a API Node/Express no Heroku.
+Projeto independente para Vercel. O backend e o MongoDB ficam no Heroku/Atlas.
 
-## Localmente
+## CORRECAO DO ERRO 404 NO CADASTRO
 
-1. `npm install`
-2. Copie `.env.example` para `.env.local` e configure `API_INTERNAL_URL=http://localhost:4000`.
-3. `npm run dev` — abra http://localhost:3000.
+O formulario chama `POST /api/auth/register`. Esta rota existe no backend.
+Esta versao implementa `app/api/[...path]/route.ts`, um proxy dinamico
+que devolve JSON com instrucoes quando `API_INTERNAL_URL` estiver ausente
+ou o Heroku estiver fora do ar. Nao depende mais de rewrites no `next.config`.
 
-## Deploy na Vercel
+### Configurar na Vercel
 
-1. Importe o repositório `vezora-frontend` no Vercel (Root Directory: `.`).
-2. Configure **`API_INTERNAL_URL=https://SEU-BACK.herokuapp.com`** em Environment Variables (sem `/` final). Esta variável é avaliada na configuração do Next.js durante o build. Não precisa expor a URL em `NEXT_PUBLIC_*`.
-3. Publique e, no backend Heroku, defina `WEB_URL=https://SEU-FRONT.vercel.app` (origem exata).
-4. Se alterar `API_INTERNAL_URL`, faça novo deploy do frontend.
+1. Em **Settings > Environment Variables** no projeto do FRONTEND:
+   - Key: `API_INTERNAL_URL`
+   - Value: `https://NOME-REAL-DO-BACKEND.herokuapp.com`
+   - Environments: **Production** (e Preview, se for testar previews).
+   - **Nao** adicione `/api`, `/auth`, `/api/health`, aspas ou barra final.
+2. No Heroku do backend, configure `WEB_URL=https://vezora-agendamentos.vercel.app`
+   (ou sua URL publica exata, sem barra final).
+3. Na Vercel, faca **Redeploy** da versao atualizada com o codigo do proxy.
+4. Abra `https://vezora-agendamentos.vercel.app/api/health`.
+   - `200` com `status:ok`: frontend encaminha ao backend corretamente.
+   - `503` JSON: variavel `API_INTERNAL_URL` ausente ou invalida.
+   - `502` JSON: Heroku inacessivel ou rota inexistente no backend.
+   - `404` HTML: frontend publicado ainda NAO inclui este proxy, ou root dir incorreto.
+5. Se `200`, tente `/cadastro` novamente. Se `403`, verifique `WEB_URL` no Heroku.
 
-O arquivo `next.config.mjs` encaminha `/api/:path*` para o Heroku; assim a sessão HTTP-only usa a origem do próprio site. Evite mudar o domínio frontend sem alterar `WEB_URL` no backend.
+**Atencao:** Se o seu repositorio GitHub contem `vezora-frontend/` e
+`vezora-backend/` juntos, configure **Root Directory = `vezora-frontend`**
+no projeto Vercel. Para Heroku, publique a pasta `vezora-backend` como raiz
+em outro repositorio ou pipeline de deploy. O Heroku conectado diretamente a um
+repositorio com as duas pastas NAO encontra o `package.json` do backend na raiz.
 
-## Integração de pagamentos
+### Rodar localmente
 
-OAuth Mercado Pago e webhooks ficam somente no `vezora-backend`; nunca coloque tokens de lojista no frontend. O cliente visualiza o Checkout Pro em um URL oficial do Mercado Pago. Antes de cobrar em produção, validar os fluxos em homologação.
+```sh
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Configure `API_INTERNAL_URL=http://localhost:4000`. Abra http://localhost:3000.
+
+### Pagamentos
+
+OAuth e webhooks ficam exclusivamente no backend. Nao inclua as chaves
+JWT_SECRET, TOKEN_ENCRYPTION_KEY nem dados do Mercado Pago na Vercel.
