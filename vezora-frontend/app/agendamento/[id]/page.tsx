@@ -1,11 +1,12 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useParams} from 'next/navigation';
+import Link from 'next/link';
 import Brand from '@/components/Brand';
 import {CheckCircle2,Clock3,CreditCard,AlertCircle,RefreshCw} from 'lucide-react';
 import {api,brl} from '@/lib/api';
 
-type BookingStatus={status:string;startAt:string;depositCents:number;paymentStatus:string|null;checkoutUrl:string|null;expiresAt:string|null;tenant?:{timezone:string}};
+type BookingStatus={status:string;startAt:string;depositCents:number;paymentStatus:string|null;checkoutUrl:string|null;expiresAt:string|null;tenant?:{timezone:string;slug:string;name:string}};
 type ReconcileResult={status:string|null;paymentStatus:string|null;verified:boolean;outcome:string};
 export default function Status(){
   const {id}=useParams<{id:string}>();
@@ -28,7 +29,7 @@ export default function Status(){
   useEffect(()=>{
     if(!b || checkedCheckoutReturn.current || !['PENDING_PAYMENT','EXPIRED','NEEDS_REVIEW'].includes(b.status))return;
     const p=new URLSearchParams(window.location.search);
-    const returned=['payment_id','collection_id','merchant_order_id','collection_status','preference_id','status'].some(key=>p.has(key));
+    const returned=p.get('origem')==='mercadopago'||['payment_id','collection_id','merchant_order_id','collection_status','preference_id','status'].some(key=>p.has(key));
     if(!returned)return;
     checkedCheckoutReturn.current=true;
     void checkPayment();
@@ -43,6 +44,7 @@ export default function Status(){
   {(pending||expired||attention)&&b.depositCents>0&&<button className="btn btn-primary wide" onClick={()=>void checkPayment()} disabled={checking||busy}><RefreshCw size={18}/>{checking?'Consultando Mercado Pago...':'Já paguei — conferir pagamento'}</button>}
   {pending&&b.checkoutUrl&&<a href={b.checkoutUrl} className="btn btn-outline wide" target="_blank" rel="noreferrer">Ir para o pagamento <CreditCard size={18}/></a>}
   <button className="btn btn-outline wide" onClick={()=>void refresh()} disabled={busy||checking}><RefreshCw size={16}/>{busy?'Atualizando...':'Atualizar status'}</button>
+  {b.tenant?.slug&&<Link href={`/${b.tenant.slug}`} className="btn btn-outline wide">Voltar à página de {b.tenant.name}</Link>}
   {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}
   </>}</div></main>
 }

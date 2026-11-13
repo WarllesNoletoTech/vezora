@@ -114,6 +114,7 @@ model Booking {
   paymentStatus   String?
   servicePriceCents Int? // preço congelado na reserva; null em dados anteriores
   commissionCents Int? // comissão congelada na reserva; null em dados anteriores
+  reminderNotifiedAt DateTime? // OneSignal: lembrete 1h antes (evita disparos repetidos)
   depositPaidAt   DateTime?
   receiptRevision Int @default(0) // protege contra recebimentos simultâneos
   receipts        BookingReceipt[]

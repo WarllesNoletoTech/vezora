@@ -21,6 +21,7 @@ import { billingState, hasAccess, generatePix, reconcileSubscription, verifyBill
 import adminRouter from './admin';
 import {financialRoutes} from './financeRoutes';
 import {commissionFor} from './finance';
+import {notifyBooking,sendOwnerPush,pushConfigured} from './notifications';
 import {startCardSubscription,cardSubscriptionStatus,cancelCardSubscription,reconcileCardInvoice,updateCardSubscriptionFromProvider} from './cardSubscriptions';
 
 const app = express();
@@ -79,7 +80,7 @@ function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
 const accountData = z.object({name,phone,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
-app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'1.0.3'});});
+app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'1.0.4'});});
 app.get('/api/platform/public-settings',wrap(async(_req,res)=>{const s=await platformSettings();res.json({trialDays:s.trialDays});}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
@@ -184,6 +185,13 @@ app.patch('/api/professionals/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   const v=proInput.parse({...pro,...changes});
   res.json(await db.professional.update({where:{id:pro!.id},data:v}));
 }));
+// Teste opcional e autenticado de entrega OneSignal. Não envia a outros lojistas.
+app.post('/api/notifications/test',auth,subscriptionGuard,rateLimit({windowMs:15*60_000,limit:3,standardHeaders:'draft-7',legacyHeaders:false}),wrap(async(req,res)=>{
+ if(!pushConfigured())fail(503,'Configure o OneSignal App ID e REST API Key no Heroku.');
+ const ok=await sendOwnerPush(req.userId!,'test',randomUUID(),'Vezora: notificações ativas','Este dispositivo está pronto para receber novidades da sua agenda.');
+ if(!ok)fail(503,'O OneSignal não aceitou o envio. Confira as credenciais, domínio e inscrição.');
+ res.json({ok:true,message:'Solicitação enviada ao OneSignal. A entrega depende da permissão e da conexão do aparelho.'});
+}));
 app.get('/api/bookings',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const rows=await db.booking.findMany({where:{tenantId:t.id,startAt:{gte:DateTime.utc().minus({days:30}).toJSDate()}},include:{service:{select:{name:true,priceCents:true}},professional:{select:{name:true}},receipts:{orderBy:{createdAt:'desc'}}},orderBy:{startAt:'asc'},take:250});
@@ -195,7 +203,9 @@ app.patch('/api/bookings/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   if(!b) fail(404,'Reserva não encontrada');
   const {status}=z.object({status:z.enum(['COMPLETED','CANCELLED'])}).parse(req.body);
   if(b!.status!=='CONFIRMED') fail(409,'Somente reservas confirmadas podem ser encerradas ou canceladas');
-  res.json(await db.booking.update({where:{id:b!.id},data:{status}}));
+  const updated=await db.booking.update({where:{id:b!.id},data:{status}});
+  if(status==='CANCELLED')void notifyBooking(b!.id,'cancelled').catch(()=>{});
+  res.json(updated);
 }));
 
 app.get('/api/public/:slug',wrap(async(req,res)=>{
@@ -272,9 +282,9 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
     }
   }
   if (!booking) fail(409, 'Não foi possível reservar este horário');
-  if(deposit===0){res.status(201).json({id:booking.id,status:booking.status,checkoutUrl:null});return;}
+  if(deposit===0){void notifyBooking(booking.id,'created').catch(()=>{});res.status(201).json({id:booking.id,status:booking.status,checkoutUrl:null});return;}
   try {
-    const returnUrl=`${env.WEB_URL}/agendamento/${booking.id}`;
+    const returnUrl=`${env.WEB_URL}/agendamento/${booking.id}?origem=mercadopago`;
     const payer=splitPayerName(p.clientName);
     const preference=await createPreference(tenant!.id,{
       items:[{id:booking.id,title:`Sinal • ${service!.name}`.slice(0,120),description:`Sinal de agendamento: ${service!.name}`.slice(0,250),category_id:'services',quantity:1,currency_id:'BRL',unit_price:deposit/100}],
@@ -286,6 +296,7 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
       expires:true,expiration_date_from:new Date().toISOString(),expiration_date_to:booking.expiresAt!.toISOString()
     });
     await db.booking.update({where:{id:booking.id},data:{checkoutUrl:preference.init_point,preferenceId:preference.id}});
+    void notifyBooking(booking.id,'created').catch(()=>{});
     res.status(201).json({id:booking.id,status:'PENDING_PAYMENT',checkoutUrl:preference.init_point});
   } catch(e){
     await db.booking.update({where:{id:booking.id},data:{status:'EXPIRED',expiresAt:new Date()}});
@@ -293,7 +304,7 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
   }
 }));
 app.get('/api/booking-status/:id',wrap(async(req,res)=>{
-  const b=await db.booking.findUnique({where:{id:String(req.params.id)},select:{status:true,startAt:true,depositCents:true,paymentStatus:true,checkoutUrl:true,expiresAt:true,tenant:{select:{timezone:true}}}});
+  const b=await db.booking.findUnique({where:{id:String(req.params.id)},select:{status:true,startAt:true,depositCents:true,paymentStatus:true,checkoutUrl:true,expiresAt:true,tenant:{select:{timezone:true,slug:true,name:true}}}});
   if(!b) fail(404,'Reserva não encontrada');
   const isExpired=b.status==='PENDING_PAYMENT'&&!!b.expiresAt&&b.expiresAt<new Date();
   res.json({...b,status:isExpired?'EXPIRED':b.status,checkoutUrl:isExpired?null:b.checkoutUrl});

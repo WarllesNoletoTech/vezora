@@ -1,4 +1,5 @@
 import { BookingStatus } from '@prisma/client';
+import {notifyBooking} from './notifications';
 import { db } from './db';
 import { getPayment, searchPaymentsForBooking } from './mp';
 import {paymentMatchesBooking} from './paymentDetails';
@@ -56,6 +57,8 @@ export async function reconcileMarketplacePayment(tenantId: string, paymentId: s
     await tx.booking.update({where:{id:b.id},data:{status:next,paymentStatus:storedPaymentStatus,mpPaymentId:storedPaymentId,depositPaidAt:paid?(b.depositPaidAt||new Date()):(['refunded','charged_back','cancelled'].includes(payment.status)?null:b.depositPaidAt)}});
     return next;
   });
+  if(status==='CONFIRMED' && original.status!=='CONFIRMED')void notifyBooking(original.id,'confirmed').catch(()=>{});
+  if(status==='NEEDS_REVIEW' && original.status!=='NEEDS_REVIEW')void notifyBooking(original.id,'review').catch(()=>{});
   return status ? {outcome:'reconciled',bookingId:original.id,status} : {outcome:'ignored',reason:'record_changed'};
 }
 
