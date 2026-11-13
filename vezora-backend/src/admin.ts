@@ -10,7 +10,9 @@ import {phoneDigits} from './core';
 export type AdminRequest=Request & {userId?:string};
 const router=Router();
 const run=(fn:(req:AdminRequest,res:Response)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>Promise.resolve(fn(req as AdminRequest,res)).catch(next);
-const fail=(code:number,msg:string):never=>{throw Object.assign(new Error(msg),{status:code});};
+function fail(code:number,msg:string):never {
+  throw Object.assign(new Error(msg),{status:code});
+}
 const paging=z.coerce.number().int().min(1).max(100000).default(1);
 const query=z.string().trim().max(90).default('');
 const reason=z.string().trim().min(8,'Informe uma justificativa com 8 caracteres ou mais').max(240);
