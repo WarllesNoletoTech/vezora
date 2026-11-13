@@ -1,3 +1,14 @@
+# Vezora v0.6 — Frontend Vercel
+
+Projeto de agendamentos multiempresa com assinaturas Pix e painel de superadministrador.
+
+**Consulte [`GUIA_DEPLOY_V06.md`](./GUIA_DEPLOY_V06.md) para as instruções atuais de implantação, novas variáveis e criação do admin.**
+
+- Mensalidade é configurada no painel `/admin` (MongoDB), **não** em variável do Heroku.
+- Contato WhatsApp do proprietário é obrigatório no cadastro e na atualização de contas anteriores.
+- O primeiro SUPERADMIN deve ser promovido pelo CLI privado do backend, nunca pelo cadastro público.
+- Cadastro, reservas, pagamentos e Mercado Pago precisam de homologação no ambiente real.
+
 # vezora-frontend — Vezora (Next.js 15 / Vercel)
 
 Projeto independente para Vercel. O backend e o MongoDB ficam no Heroku/Atlas.

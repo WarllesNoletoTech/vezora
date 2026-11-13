@@ -14,3 +14,18 @@ test('assinatura ativa libera acesso após vencimento do trial',()=>{
   const t={businessType:'NAIL_DESIGNER',trialStartsAt:new Date(now.getTime()-5*86400000),subscriptionEndsAt:new Date(now.getTime()+30*86400000)};
   assert.equal(accessPeriod(t,now).status,'ACTIVE');
 });
+
+test('administrador pode estender teste sem alterar os tres dias originais',()=>{
+  const t={businessType:'BARBEARIA',trialStartsAt:new Date(now.getTime()-4*86400000),subscriptionEndsAt:null,trialExtensionDays:2};
+  assert.equal(accessPeriod(t,now).status,'TRIAL');
+  assert.equal(accessPeriod(t,new Date(now.getTime()+86400000)).status,'EXPIRED');
+});
+test('suspensao administrativa bloqueia inclusive uma assinatura paga',()=>{
+  const t={businessType:'ESTETICA',trialStartsAt:now,subscriptionEndsAt:new Date(now.getTime()+20*86400000),suspendedAt:now};
+  assert.equal(accessPeriod(t,now).status,'SUSPENDED');
+  assert.equal(accessPeriod({...t,suspendedAt:null},now).status,'ACTIVE');
+});
+test('o vencimento pago tem prioridade sobre o periodo de teste',()=>{
+  const t={businessType:'LASH_DESIGNER',trialStartsAt:now,subscriptionEndsAt:new Date(now.getTime()+10*86400000)};
+  assert.equal(accessPeriod(t,now).status,'ACTIVE');
+});

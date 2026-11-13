@@ -67,7 +67,7 @@ async function proxy(request: Request, context: Context): Promise<Response> {
     }
 
     const outHeaders = new Headers({ 'Cache-Control': 'no-store' });
-    for (const name of ['content-type', 'location', 'set-cookie']) {
+    for (const name of ['content-type', 'content-disposition', 'location', 'set-cookie']) {
       const value = upstream.headers.get(name);
       if (value) outHeaders.set(name, value);
     }

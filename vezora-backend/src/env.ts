@@ -24,7 +24,6 @@ const schema = z.object({
   VEZORA_MP_ACCESS_TOKEN: z.string().default(''),
   VEZORA_MP_WEBHOOK_SECRET: z.string().default(''),
   VEZORA_MP_COLLECTOR_ID: z.string().default(''),
-  VEZORA_MONTHLY_PRICE_CENTS: z.coerce.number().int().min(0).default(0),
   MP_CLIENT_ID: z.string().default(''),
   MP_CLIENT_SECRET: z.string().default(''),
   MP_REDIRECT_URI: z.string().default(''),

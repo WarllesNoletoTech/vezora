@@ -10,6 +10,8 @@ datasource db {
 model User {
   id           String   @id @default(uuid()) @map("_id")
   name         String
+  phone        String?  // null em contas antigas; exige atualizacao no proximo acesso
+  role         UserRole? // null = LOJISTA legado; somente CLI promove SUPERADMIN
   email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
@@ -34,6 +36,9 @@ model Tenant {
   // Nulo apenas para contas antigas: atualizar no próximo login.
   businessType   BusinessType?
   trialStartsAt  DateTime?
+  trialExtensionDays Int? // nulo em contas anteriores a v0.6
+  suspendedAt    DateTime?
+  suspensionReason String?
   subscriptionEndsAt DateTime?
   subscriptionPayments SubscriptionPayment[]
   createdAt      DateTime       @default(now())
@@ -168,4 +173,29 @@ model SubscriptionPayment {
   paidAt         DateTime?
   @@index([tenantId, status, createdAt])
   @@index([mpPaymentId])
+}
+
+
+// SUPERADMIN nunca e escolhido pelo cadastro publico; promovido somente pelo CLI seguro.
+enum UserRole {
+  LOJISTA
+  SUPERADMIN
+}
+
+// Registro unico de configuracoes comerciais da plataforma.
+model PlatformSettings {
+  id                String   @id @default("global") @map("_id")
+  monthlyPriceCents Int      @default(0)
+  updatedAt         DateTime @updatedAt
+}
+
+model AdminAuditLog {
+  id        String   @id @default(uuid()) @map("_id")
+  actorId   String
+  tenantId  String?
+  action    String
+  details   String   @default("")
+  createdAt DateTime @default(now())
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
 }

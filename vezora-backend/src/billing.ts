@@ -4,15 +4,19 @@ import { env } from './env';
 import { verifyMercadoPagoSignature } from './webhookSignature';
 import { accessPeriod,BILLING_DAYS } from './trial';
 
-export function billingState(tenant: Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'>, now=new Date()) {
+export async function platformSettings() {
+  // O primeiro acesso cria a configuracao neutra (valor zero): nao cobra sem preco salvo.
+  return db.platformSettings.upsert({where:{id:'global'},create:{id:'global',monthlyPriceCents:0},update:{}});
+}
+export function billingState(tenant: Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'|'trialExtensionDays'|'suspendedAt'>, monthlyPriceCents=0, now=new Date()) {
   return {
     ...accessPeriod(tenant,now),
-    monthlyPriceCents:env.VEZORA_MONTHLY_PRICE_CENTS,
-    pixConfigured:Boolean(env.VEZORA_MONTHLY_PRICE_CENTS>0 && env.VEZORA_MP_ACCESS_TOKEN && env.VEZORA_MP_WEBHOOK_SECRET && env.API_PUBLIC_URL)
+    monthlyPriceCents,
+    pixConfigured:Boolean(monthlyPriceCents>=100 && env.VEZORA_MP_ACCESS_TOKEN && env.VEZORA_MP_WEBHOOK_SECRET && env.API_PUBLIC_URL)
   };
 }
-export function hasAccess(tenant:Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'>) {
-  return ['ACTIVE','TRIAL'].includes(billingState(tenant).status);
+export function hasAccess(tenant:Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'|'trialExtensionDays'|'suspendedAt'>) {
+  return ['ACTIVE','TRIAL'].includes(accessPeriod(tenant).status);
 }
 
 type MPSubscriptionPayment={id:number|string;status:string;external_reference:string;transaction_amount:number;payment_method_id:string;currency_id?:string;collector_id?:number|string;transaction_details?:{external_resource_url?:string};point_of_interaction?:{transaction_data?:{qr_code?:string;qr_code_base64?:string;ticket_url?:string}}};

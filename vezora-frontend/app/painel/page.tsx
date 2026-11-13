@@ -29,9 +29,10 @@ export default function Dashboard(){
  const fetchAll=useCallback(async()=>{
   try {
     // A sessão é essencial, mas uma falha isolada em pagamentos não deve bloquear a agenda.
-    const me=await api<{user:{name:string};tenant:Tenant;onboardingRequired:boolean;billing:{status:string;daysRemaining:number;trialEndsAt:string|null}}>('/me');
+    const me=await api<{user:{name:string;role:'LOJISTA'|'SUPERADMIN'};tenant:Tenant|null;onboardingRequired:boolean;billing:{status:string;daysRemaining:number;trialEndsAt:string|null}}>('/me');
+    if(me.user.role==='SUPERADMIN'){r.replace('/admin');return;}
     if(me.onboardingRequired){r.replace('/atualizar-cadastro');return;}
-    if(me.billing.status==='EXPIRED'){r.replace('/assinatura');return;}
+    if(me.billing.status==='EXPIRED'||me.billing.status==='SUSPENDED'){r.replace('/assinatura');return;}
     SB(me.billing);U(me.tenant); N(me.user.name);
     const results=await Promise.allSettled([
       api<Service[]>('/services'),api<Professional[]>('/professionals'),
