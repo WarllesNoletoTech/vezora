@@ -453,3 +453,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(max-width:840px){.vz-report-columns{grid-template-columns:1fr}}
 @media(max-width:540px){.vz-report-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.vz-report-stat{padding:12px 10px}.vz-report-stat b{font-size:16px}.vz-mini-summary{grid-template-columns:1fr}.vz-report-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.vz-report-filters label{min-width:0}.vz-report-filters>.btn{grid-column:span 2;width:100%;justify-content:center}.vz-salary-total{flex-direction:column;align-items:flex-start}}
 @media(max-width:350px){.vz-report-stats{grid-template-columns:1fr}}
+/* Vezora v0.8 — área financeira do superadministrador */
+.ad-finance-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.ad-finance-filters label{display:grid;gap:6px;flex:1 1 165px;font-size:12px;font-weight:700;color:#496476}
+.ad-finance-filters input,.ad-finance-filters select{min-height:42px;min-width:0;width:100%;max-width:100%;background:#fff;border:1px solid #dae5eb;border-radius:9px;color:#263a49;padding:9px 11px;font:inherit;font-size:12px}
+.ad-finance-filters .ad-action{height:42px;justify-content:center}
+.ad-finance-heading{padding:17px 18px 0}
+.ad-top-tenant-list .ad-simple-row:last-child{border-bottom:0}
+.ad-shell .ad-info{margin-top:6px}
+@media(max-width:780px){.ad-finance-filters{padding:14px}.ad-finance-filters label{flex:1 1 145px}.ad-finance-heading{padding:15px}.ad-content .ad-action{white-space:nowrap}.ad-cell-actions{flex-wrap:wrap}}
+@media(max-width:400px){.ad-finance-filters label{flex:1 1 100%}.ad-content .ad-heading>.ad-cell-actions{width:100%}.ad-content .ad-heading>.ad-cell-actions a{flex:1;justify-content:center}}

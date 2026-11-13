@@ -6,6 +6,7 @@ import {platformSettings} from './billing';
 import {accessPeriod} from './trial';
 import {env} from './env';
 import {phoneDigits} from './core';
+import {adminFinanceRouter} from './adminFinance';
 
 export type AdminRequest=Request & {userId?:string};
 const router=Router();
@@ -168,4 +169,5 @@ router.get('/audit',run(async(req,res)=>{
   const [total,items]=await Promise.all([db.adminAuditLog.count(),db.adminAuditLog.findMany({take:perPage,skip:(page-1)*perPage,orderBy:{createdAt:'desc'},select:{id:true,action:true,details:true,tenantId:true,createdAt:true,actorId:true}})]);
   res.json({total,page,pageSize:perPage,items});
 }));
+router.use('/finance',adminFinanceRouter);
 export default router;
