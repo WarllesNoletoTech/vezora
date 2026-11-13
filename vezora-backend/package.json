@@ -1,6 +1,6 @@
 {
   "name": "vezora-backend",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -12,7 +12,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "admin:promote": "node scripts/promote-admin.cjs",
     "db:push": "prisma db push",
-    "heroku-postbuild": "npm run build"
+    "heroku-postbuild": "npm run build",
+    "db:backfill-v07": "node scripts/backfill-v07.cjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
@@ -26,7 +27,8 @@
     "jsonwebtoken": "^9.0.2",
     "luxon": "^3.7.2",
     "zod": "^3.25.76",
-    "prisma": "6.19.0"
+    "prisma": "6.19.0",
+    "pdfkit": "^0.17.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { Prisma, BookingStatus, DepositMode, BusinessType } from '@prisma/client';
+import { Prisma, BookingStatus, DepositMode, BusinessType, ProfessionalRole, CommissionMode } from '@prisma/client';
 import { z, ZodError } from 'zod';
 import { DateTime } from 'luxon';
 import { db } from './db';
@@ -16,6 +16,8 @@ import { createPreference, exchangeCode, getPayment, mpReady, validMpWebhook } f
 import { themeFor } from './business';
 import { billingState, hasAccess, generatePix, reconcileSubscription, verifyBillingWebhook, platformSettings } from './billing';
 import adminRouter from './admin';
+import {financialRoutes} from './financeRoutes';
+import {commissionFor} from './finance';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -81,7 +83,7 @@ app.post('/api/auth/register',wrap(async(req,res)=>{
     const user=await tx.user.create({data:{name:body.name,email:body.email,phone:body.phone,role:'LOJISTA',passwordHash:hash}});
     const palette=themeFor(body.businessType);
     const tenant=await tx.tenant.create({data:{name:body.business,slug:body.slug,ownerId:user.id,businessType:body.businessType,trialStartsAt:new Date(),whatsapp:body.phone,primaryColor:palette.primary,secondaryColor:palette.secondary}});
-    await tx.professional.create({data:{tenantId:tenant.id,name:body.name,schedule:DEFAULT_SCHEDULE}});
+    await tx.professional.create({data:{tenantId:tenant.id,name:body.name,schedule:DEFAULT_SCHEDULE,role:'OWNER'}});
     return user;
   });
   session(res,user.id); res.status(201).json({ok:true,trialDays:3});
@@ -154,8 +156,18 @@ app.patch('/api/services/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
 const timePattern=/^([01]\d|2[0-3]):[0-5]\d$/;
 const workday=z.union([z.null(),z.tuple([z.string().regex(timePattern),z.string().regex(timePattern)]).refine(v=>v[1]>v[0],'Intervalo inválido')]);
 const scheduleSchema=z.record(z.enum(['0','1','2','3','4','5','6']),workday);
-const proInput=z.object({name,photoUrl:cleanUrl.default(''),schedule:scheduleSchema.default(DEFAULT_SCHEDULE),active:z.boolean().default(true)});
-const proPatch=proInput.partial().strict();
+const proFields=z.object({
+  name,photoUrl:cleanUrl.default(''),schedule:scheduleSchema.default(DEFAULT_SCHEDULE),active:z.boolean().default(true),
+  role:z.nativeEnum(ProfessionalRole).default('EMPLOYEE'),
+  salaryEnabled:z.boolean().default(false),salaryCents:z.number().int().min(0).max(100_000_000).default(0),
+  commissionMode:z.nativeEnum(CommissionMode).default('NONE'),commissionValue:z.number().int().min(0).max(100_000_000).default(0)
+});
+const proInput=proFields.superRefine((v,ctx)=>{
+  if(v.commissionMode==='PERCENT'&&v.commissionValue>100)ctx.addIssue({code:'custom',path:['commissionValue'],message:'A comissão percentual não pode superar 100%'});
+  if(!v.salaryEnabled && v.salaryCents!==0)ctx.addIssue({code:'custom',path:['salaryCents'],message:'Sem salário habilitado, informe valor zero'});
+  if(v.commissionMode==='NONE'&&v.commissionValue!==0)ctx.addIssue({code:'custom',path:['commissionValue'],message:'Sem comissão habilitada, informe valor zero'});
+});
+const proPatch=proFields.partial().strict();
 app.get('/api/professionals',auth,subscriptionGuard,wrap(async(req,res)=>{const t=await myTenant(req);res.json(await db.professional.findMany({where:{tenantId:t.id},orderBy:{name:'asc'}}));}));
 app.post('/api/professionals',auth,subscriptionGuard,wrap(async(req,res)=>{const t=await myTenant(req);const v=proInput.parse(req.body);res.status(201).json(await db.professional.create({data:{...v,tenantId:t.id}}));}));
 app.patch('/api/professionals/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
@@ -166,9 +178,10 @@ app.patch('/api/professionals/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   const v=proInput.parse({...pro,...changes});
   res.json(await db.professional.update({where:{id:pro!.id},data:v}));
 }));
+app.use('/api',auth,subscriptionGuard,financialRoutes);
 app.get('/api/bookings',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
-  const rows=await db.booking.findMany({where:{tenantId:t.id,startAt:{gte:DateTime.utc().minus({days:30}).toJSDate()}},include:{service:{select:{name:true,priceCents:true}},professional:{select:{name:true}}},orderBy:{startAt:'asc'},take:250});
+  const rows=await db.booking.findMany({where:{tenantId:t.id,startAt:{gte:DateTime.utc().minus({days:30}).toJSDate()}},include:{service:{select:{name:true,priceCents:true}},professional:{select:{name:true}},receipts:{orderBy:{createdAt:'desc'}}},orderBy:{startAt:'asc'},take:250});
   res.json(rows);
 }));
 app.patch('/api/bookings/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
@@ -239,7 +252,7 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
     const overlaps=await tx.booking.findMany({where:{professionalId:prof!.id,startAt:{lt:endAt},endAt:{gt:startAt},OR:[{status:{in:['CONFIRMED','COMPLETED']}},{status:'PENDING_PAYMENT',expiresAt:{gt:now}}]},select:{startAt:true,endAt:true}});
     const choices=slotsForDay({date:p.date,timezone:tenant!.timezone,durationMin:service!.durationMin,schedule:prof!.schedule as Schedule,booked:overlaps,now});
     if(!choices.includes(p.time)) fail(409,'Horário não está mais disponível');
-    return tx.booking.create({data:{tenantId:tenant!.id,serviceId:service!.id,professionalId:prof!.id,clientName:p.clientName,clientPhone:p.clientPhone,startAt,endAt,depositCents:deposit,status:deposit>0?'PENDING_PAYMENT':'CONFIRMED',expiresAt:deposit>0?new Date(Date.now()+15*60_000):null}});
+    return tx.booking.create({data:{tenantId:tenant!.id,serviceId:service!.id,professionalId:prof!.id,clientName:p.clientName,clientPhone:p.clientPhone,startAt,endAt,depositCents:deposit,servicePriceCents:service!.priceCents,commissionCents:commissionFor(service!.priceCents,prof!.commissionMode,prof!.commissionValue),status:deposit>0?'PENDING_PAYMENT':'CONFIRMED',expiresAt:deposit>0?new Date(Date.now()+15*60_000):null}});
   },{timeout: 10000, maxWait: 5000});
   let booking: Awaited<ReturnType<typeof bookOnce>> | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -368,6 +381,15 @@ app.delete('/api/payments/connect',auth,subscriptionGuard,wrap(async(req,res)=>{
   await db.paymentAccount.deleteMany({where:{tenantId:t.id}});
   res.json({ok:true});
 }));
+// URL genérica opcional no painel de integração. As preferências de pagamento
+// usam notification_url individual contendo o tenantId para conciliação real.
+app.post('/api/payments/webhook',wrap(async(req,res)=>{
+  const dataId=String(req.query['data.id']||'');
+  if(!validMpWebhook(String(req.headers['x-signature']||''),String(req.headers['x-request-id']||''),dataId)) fail(401,'Assinatura inválida');
+  // Sem tenantId não é seguro identificar uma reserva ou marcar pagamento aprovado.
+  console.warn('Webhook Marketplace genérico recebido sem estabelecimento; conciliação não aplicada');
+  res.json({received:true});
+}));
 app.post('/api/payments/webhook/:tenantId',wrap(async(req,res)=>{
   // A assinatura usa o data.id do querystring, nunca apenas o body enviado por terceiros.
   const dataId=String(req.query['data.id']||'');
@@ -394,7 +416,7 @@ app.post('/api/payments/webhook/:tenantId',wrap(async(req,res)=>{
       else if(paid && ['EXPIRED','CANCELLED'].includes(current.status)) status='NEEDS_REVIEW';
       else if(paid && current.paymentStatus==='approved' && current.mpPaymentId && current.mpPaymentId!==String(payment.id)) status='NEEDS_REVIEW';
       else if(['cancelled','refunded','charged_back'].includes(payment.status) && ['CONFIRMED','COMPLETED'].includes(current.status) && current.mpPaymentId===String(payment.id)) status='NEEDS_REVIEW';
-      await tx.booking.update({where:{id:current.id},data:{status,paymentStatus:payment.status,mpPaymentId:String(payment.id)}});
+      await tx.booking.update({where:{id:current.id},data:{status,paymentStatus:payment.status,mpPaymentId:String(payment.id),depositPaidAt:paid?(current.depositPaidAt||new Date()):(['refunded','charged_back','cancelled'].includes(payment.status)?null:current.depositPaidAt)}});
     });
     res.status(200).json({received:true});
   }catch(e){console.error('Falha ao reconciliar webhook do MP',e);res.status(503).json({error:'Conciliação indisponível; reenvie o evento'});}

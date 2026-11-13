@@ -417,3 +417,39 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .ad-category-grid{grid-template-columns:1fr}
 }
 @media(max-width:490px){.ad-stat-grid{grid-template-columns:1fr 1fr;gap:9px}.ad-stat{padding:13px;border-radius:12px;gap:9px}.ad-stat strong{font-size:21px}.ad-stat-head{font-size:10px}.ad-stat-icon{width:28px;height:28px}.ad-stat-icon svg{width:16px;height:16px}.ad-stat small{font-size:9px}.ad-panel{padding:14px}.ad-table-wrap{padding:0}.ad-panel-heading{align-items:flex-start}.ad-detail-actions{grid-template-columns:1fr}.ad-status-grid strong{font-size:14px}.ad-heading h2{font-size:18px}.ad-topbar h1{font-size:19px}.ad-topbar small{font-size:8px}.ad-filters form{flex:1 1 100%}}
+
+/* v0.7 — Relatórios financeiros do lojista */
+.vz-finance{display:grid;gap:20px;min-width:0}
+.vz-report-filters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:16px 0}
+.vz-report-filters label{display:grid;gap:6px;font-size:12px;font-weight:650;min-width:155px;flex:1}
+.vz-report-filters input{width:100%;min-height:43px;border:1px solid #e5dfe9;border-radius:10px;padding:9px 12px;background:#fff;color:#231d2b}
+.vz-report-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.vz-report-stat{background:#fff;border:1px solid #e7e2eb;border-radius:15px;padding:18px 16px;display:grid;gap:8px;min-width:0}
+.vz-report-stat span{font-size:12px;color:#756f7d}
+.vz-report-stat b{font-size:clamp(17px,2vw,24px);color:#241d2b;overflow-wrap:anywhere}
+.vz-report-stat small{color:#8a8290;font-size:11px}
+.vz-report-columns{display:grid;grid-template-columns:1fr 1fr;gap:18px;min-width:0}
+.vz-report-columns>.panel{min-width:0}
+.vz-table-scroll{overflow-x:auto;min-width:0;width:100%;-webkit-overflow-scrolling:touch}
+.vz-report-table{border-collapse:collapse;width:100%;min-width:450px;text-align:left;font-size:12px}
+.vz-report-table th{background:#f7f3f8;color:#51465c;font-size:11px;font-weight:750;white-space:nowrap}
+.vz-report-table th,.vz-report-table td{padding:12px 10px;border-bottom:1px solid #efebf1;vertical-align:top}
+.vz-report-table td small{display:block;color:#877f8d;font-size:11px;margin-top:4px;line-height:1.35}
+.vz-report-table td:last-child{min-width:125px}
+.vz-report-table td .btn{white-space:nowrap}
+.vz-mini-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0 20px}
+.vz-mini-summary>div{display:grid;gap:6px;background:#faf7fb;border:1px solid #efe8f0;border-radius:12px;padding:14px}
+.vz-mini-summary span{color:#6e6374;font-size:11px}
+.vz-mini-summary strong{color:#2e2436;font-size:17px}
+.vz-receipt-line{font-size:10px;color:#667;margin-top:7px;white-space:nowrap}
+.vz-void{border:0;background:none;color:#a14455;text-decoration:underline;font-size:10px;cursor:pointer;padding:0 3px}
+.vz-paid{font-size:11px;color:#277a5c;font-weight:700}
+.vz-salary-total{margin-top:20px;padding:14px 16px;border-radius:12px;background:#f8f3f9;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.vz-salary-total strong{font-size:17px;color:#36213f}
+.vz-footnote{padding:0 4px 15px;max-width:820px}
+.vz-pay-config{background:#faf8fb;border:1px solid #ede6ef;border-radius:12px;padding:14px;display:grid;gap:14px}
+.vz-pay-config .form-two{margin:0}
+@media(max-width:1100px){.vz-report-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:840px){.vz-report-columns{grid-template-columns:1fr}}
+@media(max-width:540px){.vz-report-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.vz-report-stat{padding:12px 10px}.vz-report-stat b{font-size:16px}.vz-mini-summary{grid-template-columns:1fr}.vz-report-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.vz-report-filters label{min-width:0}.vz-report-filters>.btn{grid-column:span 2;width:100%;justify-content:center}.vz-salary-total{flex-direction:column;align-items:flex-start}}
+@media(max-width:350px){.vz-report-stats{grid-template-columns:1fr}}

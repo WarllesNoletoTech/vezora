@@ -45,6 +45,7 @@ model Tenant {
   services       Service[]
   professionals  Professional[]
   bookings       Booking[]
+  bookingReceipts BookingReceipt[]
   paymentAccount PaymentAccount?
   oauthStates    OAuthState[]
 }
@@ -82,6 +83,11 @@ model Professional {
   schedule  Json
   bookings  Booking[]
   bookingRevision Int @default(0) // Atualizado transacionalmente: exclusão mútua por profissional.
+  role            ProfessionalRole @default(EMPLOYEE)
+  salaryEnabled   Boolean @default(false)
+  salaryCents     Int @default(0) // salário mensal contratado (não significa que foi pago)
+  commissionMode  CommissionMode @default(NONE)
+  commissionValue Int @default(0) // percentual inteiro ou centavos por atendimento
   @@index([tenantId, active])
 }
 
@@ -104,10 +110,55 @@ model Booking {
   preferenceId    String?
   mpPaymentId     String?
   paymentStatus   String?
+  servicePriceCents Int? // preço congelado na reserva; null em dados anteriores
+  commissionCents Int? // comissão congelada na reserva; null em dados anteriores
+  depositPaidAt   DateTime?
+  receiptRevision Int @default(0) // protege contra recebimentos simultâneos
+  receipts        BookingReceipt[]
   createdAt       DateTime       @default(now())
   @@index([professionalId, startAt, endAt, status])
   @@index([tenantId, startAt])
   @@index([mpPaymentId])
+}
+
+// Comissões são estimativas contratuais dos serviços concluídos.
+enum ProfessionalRole {
+  OWNER
+  EMPLOYEE
+  CONTRACTOR
+}
+
+enum CommissionMode {
+  NONE
+  PERCENT
+  FIXED
+}
+
+enum ReceiptMethod {
+  CASH
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  TRANSFER
+  OTHER
+}
+
+// Lançamentos manuais imutáveis; estornos registram motivo sem apagar histórico.
+model BookingReceipt {
+  id           String @id @default(uuid()) @map("_id")
+  tenantId     String
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingId    String
+  booking      Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  amountCents  Int
+  method       ReceiptMethod
+  note         String @default("")
+  recordedById String
+  createdAt    DateTime @default(now())
+  voidedAt     DateTime?
+  voidReason   String?
+  @@index([tenantId, createdAt])
+  @@index([bookingId, createdAt])
 }
 
 enum BookingStatus {
