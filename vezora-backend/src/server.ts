@@ -15,6 +15,7 @@ import { DEFAULT_SCHEDULE, depositCents, localSlot, phoneDigits, slotsForDay, Sc
 import { decrypt, encrypt, rand, sha256 } from './crypto';
 import { createPreference, exchangeCode, mpReady, validMpWebhook } from './mp';
 import { reconcileMarketplaceWebhook, recoverMarketplaceBooking } from './marketplaceReconcile';
+import {splitPayerName,validDeviceId} from './paymentDetails';
 import { themeFor } from './business';
 import { billingState, hasAccess, generatePix, reconcileSubscription, verifyBillingWebhook, platformSettings } from './billing';
 import adminRouter from './admin';
@@ -78,7 +79,7 @@ function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
 const accountData = z.object({name,phone,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
-app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'0.9.9'});});
+app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'1.0.0'});});
 app.get('/api/platform/public-settings',wrap(async(_req,res)=>{const s=await platformSettings();res.json({trialDays:s.trialDays});}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
@@ -274,10 +275,11 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
   if(deposit===0){res.status(201).json({id:booking.id,status:booking.status,checkoutUrl:null});return;}
   try {
     const returnUrl=`${env.WEB_URL}/agendamento/${booking.id}`;
+    const payer=splitPayerName(p.clientName);
     const preference=await createPreference(tenant!.id,{
-      items:[{id:booking.id,title:`Sinal • ${service!.name}`,quantity:1,currency_id:'BRL',unit_price:deposit/100}],
+      items:[{id:booking.id,title:`Sinal • ${service!.name}`.slice(0,120),description:`Sinal de agendamento: ${service!.name}`.slice(0,250),category_id:'services',quantity:1,currency_id:'BRL',unit_price:deposit/100}],
       external_reference:booking.id,
-      payer:{name:p.clientName},
+      payer:{name:payer.firstName,...(payer.lastName?{surname:payer.lastName}:{})},
       back_urls:{success:returnUrl,pending:returnUrl,failure:returnUrl},
       auto_return:'approved',
       notification_url:`${env.API_PUBLIC_URL}/api/payments/webhook/${tenant!.id}`,
@@ -318,7 +320,7 @@ app.get('/api/billing/status',auth,wrap(async(req,res)=>{
 }));
 app.post('/api/billing/pix',auth,wrap(async(req,res)=>{
   const tenant=await myTenant(req);
-  const data=z.object({document:z.string().transform(x=>x.replace(/\D/g,'')).refine(x=>x.length===11||x.length===14,'Informe CPF ou CNPJ válido')}).strict().parse(req.body);
+  const data=z.object({document:z.string().transform(x=>x.replace(/\D/g,'')).refine(x=>x.length===11||x.length===14,'Informe CPF ou CNPJ válido'),deviceId:z.string().max(220).optional()}).strict().parse(req.body);
   if(!tenant.businessType) fail(428,'Atualize o tipo de negócio antes de pagar');
   const contact=await db.user.findUnique({where:{id:req.userId},select:{phone:true}});
   if(!contact || !/^\d{10,13}$/.test(contact.phone||'')) fail(428,'Complete seu cadastro com WhatsApp antes de pagar');
@@ -339,7 +341,7 @@ app.post('/api/billing/pix',auth,wrap(async(req,res)=>{
   }
   if(!invoice)invoice=await db.subscriptionPayment.create({data:{tenantId:tenant.id,amountCents:settings.monthlyPriceCents,expiresAt:new Date(Date.now()+45*60000)}});
   if(!invoice.mpPaymentId||!invoice.qrCode){
-    const payment=await generatePix(invoice.id,user!.email,invoice.amountCents,data.document,invoice.expiresAt);
+    const payment=await generatePix(invoice.id,user!.email,invoice.amountCents,data.document,invoice.expiresAt,user!.name,validDeviceId(data.deviceId)?data.deviceId:undefined);
     const tx=payment.point_of_interaction?.transaction_data;
     if(!payment.id||!tx?.qr_code) fail(502,'Mercado Pago não retornou o Pix. Tente novamente.');
     invoice=await db.subscriptionPayment.update({where:{id:invoice.id},data:{mpPaymentId:String(payment.id),qrCode:tx.qr_code,qrCodeBase64:tx.qr_code_base64||'',ticketUrl:tx.ticket_url||''}});

@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {useParams} from 'next/navigation';
 import Brand from '@/components/Brand';
 import {CheckCircle2,Clock3,CreditCard,AlertCircle,RefreshCw} from 'lucide-react';
@@ -9,6 +9,7 @@ type BookingStatus={status:string;startAt:string;depositCents:number;paymentStat
 type ReconcileResult={status:string|null;paymentStatus:string|null;verified:boolean;outcome:string};
 export default function Status(){
   const {id}=useParams<{id:string}>();
+  const checkedCheckoutReturn=useRef(false);
   const [b,B]=useState<BookingStatus|null>(null),[error,E]=useState(''),[message,M]=useState(''),[busy,S]=useState(false),[checking,C]=useState(false);
   const refresh=useCallback(async()=>{S(true);try{B(await api<BookingStatus>(`/booking-status/${id}`));E('')}catch(x){E((x as Error).message)}finally{S(false)}},[id]);
   const checkPayment=useCallback(async()=>{
@@ -22,6 +23,16 @@ export default function Status(){
     } catch(x){E((x as Error).message)} finally {C(false)}
   },[id,refresh]);
   useEffect(()=>{void refresh()},[refresh]);
+  // O retorno do Checkout Pro nunca prova pagamento. Ele só aciona uma consulta
+  // ao backend, que valida o pagamento na conta OAuth do lojista.
+  useEffect(()=>{
+    if(!b || checkedCheckoutReturn.current || !['PENDING_PAYMENT','EXPIRED','NEEDS_REVIEW'].includes(b.status))return;
+    const p=new URLSearchParams(window.location.search);
+    const returned=['payment_id','collection_id','merchant_order_id','collection_status','preference_id','status'].some(key=>p.has(key));
+    if(!returned)return;
+    checkedCheckoutReturn.current=true;
+    void checkPayment();
+  },[b,checkPayment]);
   useEffect(()=>{if(b?.status!=='PENDING_PAYMENT')return;const timer=setInterval(()=>{void refresh()},12000);return()=>clearInterval(timer)},[b?.status,refresh]);
   const pending=b?.status==='PENDING_PAYMENT',attention=b?.status==='NEEDS_REVIEW',expired=b?.status==='EXPIRED';
   return <main className="status-page"><div className="status-card"><Brand/>{!b?<div className="empty-state">{error||'Consultando sua reserva...'}</div>:<>

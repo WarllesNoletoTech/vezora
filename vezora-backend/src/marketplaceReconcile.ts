@@ -1,6 +1,7 @@
 import { BookingStatus } from '@prisma/client';
 import { db } from './db';
 import { getPayment, searchPaymentsForBooking } from './mp';
+import {paymentMatchesBooking} from './paymentDetails';
 
 // Toda confirmação é feita consultando diretamente a conta do vendedor no Mercado Pago.
 // Nunca confiar no status, valor ou recebedor enviado pelo navegador/webhook.
@@ -13,16 +14,18 @@ export async function reconcileMarketplacePayment(tenantId: string, paymentId: s
   const account=await db.paymentAccount.findUnique({where:{tenantId},select:{sellerUserId:true}});
   if (!account) return {outcome:'not_found',reason:'seller_not_connected'};
   const payment=await getPayment(tenantId,paymentId);
-  // Somente pagamentos efetivamente pertencentes ao vendedor conectado.
-  if(String(payment.collector_id)!==account.sellerUserId) return {outcome:'ignored',reason:'collector_mismatch'};
+  // O external_reference é apenas uma chave de busca; todos os detalhes são
+  // novamente confirmados contra a API oficial na conta OAuth do vendedor.
   if(typeof payment.external_reference!=='string'||!payment.external_reference) return {outcome:'ignored',reason:'missing_reference'};
   const original=await db.booking.findFirst({where:{id:payment.external_reference,tenantId}});
-  if(!original||!original.depositCents||Math.abs(payment.transaction_amount*100-original.depositCents)>1) return {outcome:'ignored',reason:'booking_or_amount_mismatch'};
+  if(!original||!original.depositCents) return {outcome:'ignored',reason:'booking_not_found'};
+  const proof=paymentMatchesBooking(payment,{sellerUserId:account.sellerUserId,bookingId:original.id,depositCents:original.depositCents});
+  if(!proof.valid) return {outcome:'ignored',reason:proof.reason};
 
   const status=await db.$transaction(async tx=>{
     const b=await tx.booking.findFirst({where:{id:original.id,tenantId}});
     if (!b) return null;
-    if(Math.abs(payment.transaction_amount*100-b.depositCents)>1) return null;
+    if(!paymentMatchesBooking(payment,{sellerUserId:account.sellerUserId,bookingId:b.id,depositCents:b.depositCents}).valid) return null;
     const paid=payment.status==='approved';
     // Não sobrescrever um pagamento já aprovado por uma tentativa nova que falhou.
     if(b.paymentStatus==='approved' && b.mpPaymentId!==String(payment.id) && !paid) return b.status;

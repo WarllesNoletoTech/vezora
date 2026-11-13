@@ -1,3 +1,8 @@
+# Vezora v1.0.0 — Integração Mercado Pago
+
+- Backend: validação do sinal por valor/recebedor/referência/moeda, identificação opcional do dispositivo para Pix, detalhamento do item e informação do comprador, data real de aprovação na conciliação da mensalidade.
+- Mantém checkout de cartão no Mercado Pago. Nenhum dado de cartão é capturado.
+
 ## 0.4.0
 - v0.4: validação segura de PATCH, readiness de pagamentos, verificação de webhooks em s/ms, refresh OAuth e desconexão MP protegida.
 

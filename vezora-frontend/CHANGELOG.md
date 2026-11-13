@@ -1,3 +1,7 @@
+# Vezora v1.0.0 — Integração Mercado Pago
+
+- Frontend: script de segurança oficial do Mercado Pago na tela de Pix e consulta automática à API no retorno do Checkout Pro (sem confiar no status da URL).
+
 ## 0.4.0
 - v0.4: PATCH Minha marca corrigido, consultas independentes do painel, modais com erros visíveis, edição de inativos, agendamento público e WhatsApp revisados.
 

@@ -43,7 +43,7 @@ export async function createPreference(tenantId: string, payload: unknown) {
 }
 export async function getPayment(tenantId: string, paymentId: string) {
   const token = await sellerToken(tenantId);
-  return mpRequest<{id: number; status: string; external_reference: string; transaction_amount: number; collector_id: number; date_approved?: string | null}>(`/v1/payments/${paymentId}`, 'GET', token);
+  return mpRequest<{id: number; status: string; external_reference: string; transaction_amount: number; collector_id: number; currency_id?: string | null; date_approved?: string | null}>(`/v1/payments/${paymentId}`, 'GET', token);
 }
 export function validMpWebhook(xSignature: string, requestId: string, dataId: string) {
   return verifyMercadoPagoSignature(xSignature, requestId, dataId, env.MP_WEBHOOK_SECRET);
