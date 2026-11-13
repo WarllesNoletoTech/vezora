@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import AdminLoader from './AdminLoader';
+import AdminDashboard from './AdminDashboard';
 
 export const metadata: Metadata = {
   title: 'Administração',
@@ -7,8 +7,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Entrada renderizável no servidor: mantém um estado legível mesmo
-// quando o JavaScript do dashboard falha durante o carregamento.
+// Renderiza o estado inicial da área administrativa no HTML do servidor.
+// Evita a tela totalmente branca quando o carregamento do JS não se completa.
 export default function AdminPage() {
-  return <AdminLoader />;
+  return <AdminDashboard />;
 }
