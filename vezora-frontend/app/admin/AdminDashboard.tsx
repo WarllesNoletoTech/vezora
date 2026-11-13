@@ -18,10 +18,10 @@ type Status='ACTIVE'|'TRIAL'|'EXPIRED'|'SUSPENDED'|'ONBOARDING';
 type TenantRow={id:string;name:string;slug:string;businessType:string|null;whatsapp:string;createdAt:string;trialStartsAt:string|null;trialExtensionDays:number;subscriptionEndsAt:string|null;suspendedAt:string|null;suspensionReason:string;billingStatus:Status;owner:{id:string;name:string;email:string;phone:string};_count:{services:number;professionals:number;bookings:number}};
 type TenantDetail=TenantRow&{bio:string;address:string;paymentAccount:{sellerUserId:string}|null;subscriptionPayments:{id:string;amountCents:number;status:string;paidAt:string|null;createdAt:string}[]};
 type Owner={id:string;name:string;email:string;phone:string;role:'LOJISTA'|'SUPERADMIN';createdAt:string;tenant:{id:string;name:string;slug:string}|null};
-type Paid={id:string;status:string;amountCents:number;createdAt:string;paidAt:string|null;expiresAt:string;tenant:{id:string;name:string;slug:string;owner:{name:string;email:string}}};
+type Paid={id:string;status:string;paymentMethod:string;amountCents:number;createdAt:string;paidAt:string|null;expiresAt:string;tenant:{id:string;name:string;slug:string;owner:{name:string;email:string}}};
 type Log={id:string;actorId:string;action:string;details:string;tenantId:string|null;createdAt:string};
 type Summary={totalTenants:number;totalOwners:number;totalBookings:number;newTenants30:number;monthlyPriceCents:number;receivedTotalCents:number;received30Cents:number;paidPaymentCount:number;statusCounts:Record<string,number>;types:Record<string,number>;latestPayments:{id:string;status:string;amountCents:number;createdAt:string;tenant:{name:string}}[]};
-type Settings={monthlyPriceCents:number;updatedAt:string;pixConfigured:boolean;paymentIntegrationConfigured:boolean};
+type Settings={monthlyPriceCents:number;trialDays:number;updatedAt:string;pixConfigured:boolean;paymentIntegrationConfigured:boolean};
 type Tab='overview'|'tenants'|'owners'|'payments'|'finance'|'settings'|'audit';
 type FinanceTotals={completed:number;confirmed:number;cancelled:number;pending:number;other:number;completedRevenueCents:number;collectedCents:number;depositsCents:number;manualCents:number;outstandingCents:number;commissionsCents:number;monthlySalariesCents:number;legacyPriceCount:number;legacyCommissionCount:number;subscriptionReceivedCents:number;subscriptionPaymentCount:number};
 type FinanceTenant=FinanceTotals&{id:string;name:string;slug:string;businessType:string|null;createdAt:string;hasMercadoPago:boolean;owner:{name:string;email:string;phone:string|null}};
@@ -30,7 +30,7 @@ const today=()=>{const p=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_
 const monthStart=()=>today().slice(0,7)+'-01';
 
 const statusLabel:Record<string,string>={ACTIVE:'Assinatura ativa',TRIAL:'Teste grátis',EXPIRED:'Vencido',SUSPENDED:'Suspenso',ONBOARDING:'Cadastro incompleto',PENDING:'Pendente',PAID:'Pago',CANCELLED:'Cancelado'};
-const menu:[Tab,string,typeof LayoutDashboard][]=[['overview','Visão geral',LayoutDashboard],['tenants','Estabelecimentos',Store],['owners','Lojistas',Users],['payments','Cobranças Pix',CreditCard],['finance','Financeiro geral',BarChart3],['settings','Configurações',Settings2],['audit','Auditoria',Activity]];
+const menu:[Tab,string,typeof LayoutDashboard][]=[['overview','Visão geral',LayoutDashboard],['tenants','Estabelecimentos',Store],['owners','Lojistas',Users],['payments','Pagamentos',CreditCard],['finance','Financeiro geral',BarChart3],['settings','Configurações',Settings2],['audit','Auditoria',Activity]];
 const dt=(value:string|null|undefined)=>value?new Date(value).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—';
 const statusClass=(status:string)=>status==='ACTIVE'||status==='PAID'?'good':status==='TRIAL'?'trial':status==='SUSPENDED'||status==='EXPIRED'?'bad':'neutral';
 function Badge({value}:{value:string}){return <span className={`ad-badge ${statusClass(value)}`}>{statusLabel[value]||value}</span>}
@@ -47,6 +47,7 @@ export default function AdminPage(){
  const [busy,B]=useState(false),[loading,L]=useState(false),[error,E]=useState(''),[notice,MSG]=useState('');
  const [summary,S]=useState<Summary|null>(null),[settings,SET]=useState<Settings|null>(null);
  const [price,PRICE]=useState('');
+ const [trialDays,TRIALDAYS]=useState('3');
  const [tenants,TS]=useState<Page<TenantRow>|null>(null),[owners,US]=useState<Page<Owner>|null>(null),[payments,PS]=useState<Page<Paid>|null>(null),[audits,AS]=useState<Page<Log>|null>(null);
  const [detail,D]=useState<TenantDetail|null>(null);
  const [search,SEARCH]=useState(''),[appliedSearch,APPLIED]=useState(''),[category,CAT]=useState('TODOS'),[payStatus,PAY]=useState('TODOS');
@@ -76,7 +77,7 @@ export default function AdminPage(){
      void api<FinanceReport>(`/admin/finance/summary?from=${monthStart()}&to=${today()}`).then(FPREVIEW).catch(()=>FPREVIEW(null));
    }
    if(tab==='finance'){const next=await api<FinanceReport>(`/admin/finance/summary?from=${finFrom}&to=${finTo}${finTenant?'&tenantId='+encodeURIComponent(finTenant):''}`);FIN(next);if(!finTenant)TENANTOPTS(next.items);}
-   if(tab==='settings'){const x=await api<Settings>('/admin/settings');SET(x);PRICE((x.monthlyPriceCents/100).toFixed(2).replace('.',','));}
+   if(tab==='settings'){const x=await api<Settings>('/admin/settings');SET(x);PRICE((x.monthlyPriceCents/100).toFixed(2).replace('.',','));TRIALDAYS(String(x.trialDays??3));}
    if(tab==='tenants')TS(await api<Page<TenantRow>>(`/admin/tenants?page=${page}&search=${encodeURIComponent(appliedSearch)}&businessType=${encodeURIComponent(category)}`));
    if(tab==='owners')US(await api<Page<Owner>>(`/admin/users?page=${page}&search=${encodeURIComponent(appliedSearch)}`));
    if(tab==='payments')PS(await api<Page<Paid>>(`/admin/payments?page=${page}&status=${payStatus}`));
@@ -103,14 +104,15 @@ export default function AdminPage(){
   if(!Number.isInteger(days)||days<1||days>(mode==='trial'?30:365)){E('Quantidade de dias inválida.');return;}
   const reason=window.prompt('Justificativa obrigatória (mínimo 8 caracteres):');
   if(reason===null)return;
-  if(mode==='grant'&&!window.confirm('Essa concessão NÃO registra receita nem pagamento Pix. Confirmar?'))return;
+  if(mode==='grant'&&!window.confirm('Essa concessão NÃO registra receita nem pagamento. Confirmar?'))return;
   void mutation(()=>api(`/admin/tenants/${t.id}/${mode}`,{method:'POST',body:JSON.stringify({days,reason})}),mode==='trial'?'Teste estendido.':'Dias de acesso concedidos (sem receita registrada).');
  }
  function fixPhone(u:Owner){const phone=window.prompt(`Atualizar contato de ${u.name}:`,u.phone);if(phone===null)return;const reason=window.prompt('Justificativa da correção (mínimo 8 caracteres):');if(reason===null)return;void mutation(()=>api(`/admin/users/${u.id}/phone`,{method:'PATCH',body:JSON.stringify({phone,reason})}),'Telefone atualizado.');}
- async function savePrice(){const cents=parseBrlCents(price);
+ async function savePrice(){const cents=parseBrlCents(price);const days=Number(trialDays);
  if(cents===null){E('Informe um valor válido: 39,90, 39.90 ou 0,00 para desativar.');return;}
- if(!window.confirm(`Confirmar a mensalidade em ${brl(cents)}? O novo preço será usado nas próximas cobranças, não nas já emitidas.`))return;
- await mutation(()=>api('/admin/settings',{method:'PATCH',body:JSON.stringify({monthlyPriceCents:cents})}),'Mensalidade alterada com sucesso.');
+ if(!Number.isInteger(days)||days<0||days>90){E('O teste grátis deve ter entre 0 e 90 dias.');return;}
+ if(!window.confirm(`Salvar mensalidade em ${brl(cents)} e período de teste em ${days} dias? A alteração no teste vale para novos cadastros.`))return;
+ await mutation(()=>api('/admin/settings',{method:'PATCH',body:JSON.stringify({monthlyPriceCents:cents,trialDays:days})}),'Mensalidade e teste grátis atualizados.');
  }
  const types=useMemo(()=>businessOptions.reduce<Record<string,string>>((acc,x)=>({...acc,[x.value]:x.label}),{}),[]);
  const segmentPerformance=useMemo(()=>{
@@ -139,9 +141,9 @@ export default function AdminPage(){
       <div className="ad-stat-grid">
        <Stat label="Estabelecimentos" value={summary?.totalTenants.toLocaleString('pt-BR')||'—'} icon={<Store/>} hint={`${summary?.newTenants30||0} novos nos últimos 30 dias`}/>
        <Stat label="Assinaturas ativas" value={summary?.statusCounts?.ACTIVE.toLocaleString('pt-BR')||'—'} icon={<ShieldCheck/>} hint="Período pago vigente"/>
-       <Stat label="Em teste grátis" value={summary?.statusCounts?.TRIAL.toLocaleString('pt-BR')||'—'} icon={<Clock3/>} hint="Teste de 3 dias"/>
-       <Stat label="Recebido nos últimos 30 dias" value={summary?brl(summary.received30Cents):'—'} icon={<Wallet/>} hint="Somente Pix confirmado"/>
-       <Stat label="Receita Pix acumulada" value={summary?brl(summary.receivedTotalCents):'—'} icon={<Receipt/>} hint={`${summary?.paidPaymentCount||0} pagamentos aprovados`}/>
+       <Stat label="Em teste grátis" value={summary?.statusCounts?.TRIAL.toLocaleString('pt-BR')||'—'} icon={<Clock3/>} hint="Prazo configurável no painel"/>
+       <Stat label="Recebido nos últimos 30 dias" value={summary?brl(summary.received30Cents):'—'} icon={<Wallet/>} hint="Pix e cartão confirmados"/>
+       <Stat label="Receita total de assinaturas" value={summary?brl(summary.receivedTotalCents):'—'} icon={<Receipt/>} hint={`${summary?.paidPaymentCount||0} pagamentos aprovados`}/>
        <Stat label="Agendamentos registrados" value={summary?.totalBookings.toLocaleString('pt-BR')||'—'} icon={<CalendarDays/>} hint="Em todos os estabelecimentos"/>
        <Stat label="Produção dos lojistas (mês)" value={financialPreview?brl(financialPreview.totals.completedRevenueCents):'—'} icon={<TrendingUp/>} hint="Serviços concluídos, não receita do Vezora"/>
        <Stat label="Recebido pelos lojistas (mês)" value={financialPreview?brl(financialPreview.totals.collectedCents):'—'} icon={<Wallet/>} hint="Sinais aprovados + recebimentos registrados"/>
@@ -164,9 +166,9 @@ export default function AdminPage(){
       <section className="ad-panel ad-table-wrap"><table className="ad-table"><thead><tr><th>Nome e e-mail</th><th>WhatsApp</th><th>Estabelecimento</th><th>Criado em</th><th>Ações</th></tr></thead><tbody>{owners?.items.map(u=><tr key={u.id}><td><strong>{u.name}</strong><small>{u.email}</small></td><td>{u.phone||<span className="ad-muted">A atualizar</span>}</td><td>{u.tenant?.name||'Administrador'}</td><td>{dt(u.createdAt)}</td><td><div className="ad-cell-actions">{u.phone&&<a className="ad-icon-link" title="Abrir WhatsApp" href={whatsappUrl(u.phone,`Olá, ${u.name}. Aqui é da administração do Vezora.`)} target="_blank" rel="noreferrer"><MessageCircle size={17}/></a>}<button className="ad-link" disabled={busy} onClick={()=>fixPhone(u)}>Corrigir número</button></div></td></tr>)}</tbody></table>{!owners?.items.length&&<p className="ad-empty">Nenhum usuário encontrado.</p>}<Pager page={page} total={owners?.total||0} onChange={PAGE}/></section>
      </>}
     {tab==='payments'&&<>
-      <div className="ad-heading"><div><h2>Histórico de cobranças Pix</h2><p>Os valores pagos são confirmados pelo Mercado Pago. Concessões manuais não aparecem como receita.</p></div><a className="ad-action" href="/api/admin/export/payments"><Receipt size={17}/> Exportar CSV</a></div>
+      <div className="ad-heading"><div><h2>Histórico de pagamentos</h2><p>Os valores pagos são confirmados pelo Mercado Pago. Concessões manuais não aparecem como receita.</p></div><a className="ad-action" href="/api/admin/export/payments"><Receipt size={17}/> Exportar CSV</a></div>
       <div className="ad-filters"><select value={payStatus} onChange={e=>{PAY(e.target.value);PAGE(1)}} aria-label="Filtrar pagamentos"><option value="TODOS">Todos os pagamentos</option><option value="PAID">Pagos</option><option value="PENDING">Pendentes</option><option value="EXPIRED">Expirados</option><option value="CANCELLED">Cancelados</option></select></div>
-      <section className="ad-panel ad-table-wrap"><table className="ad-table"><thead><tr><th>Estabelecimento</th><th>Valor</th><th>Estado</th><th>Emissão</th><th>Pago em</th></tr></thead><tbody>{payments?.items.map(p=><tr key={p.id}><td><strong>{p.tenant.name}</strong><small>{p.tenant.owner.email}</small></td><td><strong>{brl(p.amountCents)}</strong></td><td><Badge value={p.status}/></td><td>{dt(p.createdAt)}</td><td>{dt(p.paidAt)}</td></tr>)}</tbody></table>{!payments?.items.length&&<p className="ad-empty">Nenhuma cobrança encontrada.</p>}<Pager page={page} total={payments?.total||0} onChange={PAGE}/></section>
+      <section className="ad-panel ad-table-wrap"><table className="ad-table"><thead><tr><th>Estabelecimento</th><th>Valor</th><th>Forma</th><th>Estado</th><th>Emissão</th><th>Pago em</th></tr></thead><tbody>{payments?.items.map(p=><tr key={p.id}><td><strong>{p.tenant.name}</strong><small>{p.tenant.owner.email}</small></td><td><strong>{brl(p.amountCents)}</strong></td><td>{p.paymentMethod==='CARD'?'Cartão':'Pix'}</td><td><Badge value={p.status}/></td><td>{dt(p.createdAt)}</td><td>{dt(p.paidAt)}</td></tr>)}</tbody></table>{!payments?.items.length&&<p className="ad-empty">Nenhuma cobrança encontrada.</p>}<Pager page={page} total={payments?.total||0} onChange={PAGE}/></section>
      </>}
     {tab==='finance'&&<>
       <div className="ad-heading"><div><h2>Financeiro dos estabelecimentos</h2><p>Compare a produção de cada lojista e o que entrou no caixa do Vezora, sem misturar as duas receitas.</p></div><div className="ad-cell-actions"><a className="ad-action" href={`/api/admin/finance/report.pdf?${financeQuery}`}><FileDown size={17}/> Baixar PDF</a><a className="ad-action" href={`/api/admin/finance/export.csv?${financeQuery}`}><FileSpreadsheet size={17}/> Exportar CSV</a></div></div>
@@ -176,7 +178,7 @@ export default function AdminPage(){
        <Stat label="Produção concluída" value={finance?brl(finance.totals.completedRevenueCents):'—'} hint="Faturamento dos serviços" icon={<TrendingUp/>}/>
        <Stat label="Recebimentos dos lojistas" value={finance?brl(finance.totals.collectedCents):'—'} hint="Sinais + lançamentos manuais" icon={<Wallet/>}/>
        <Stat label="Ainda a receber" value={finance?brl(finance.totals.outstandingCents):'—'} hint="Atendimentos concluídos" icon={<Clock3/>}/>
-       <Stat label="Assinaturas recebidas pelo Vezora" value={finance?brl(finance.totals.subscriptionReceivedCents):'—'} hint="Pix de mensalidades aprovados" icon={<CreditCard/>}/>
+       <Stat label="Assinaturas recebidas pelo Vezora" value={finance?brl(finance.totals.subscriptionReceivedCents):'—'} hint="Pix e cartão aprovados" icon={<CreditCard/>}/>
        <Stat label="Atendimentos concluídos" value={finance?.totals.completed.toLocaleString('pt-BR')||'—'} hint="De todos os negócios filtrados" icon={<Check/>}/>
        <Stat label="Comissões previstas" value={finance?brl(finance.totals.commissionsCents):'—'} hint="Não são repasses comprovados" icon={<Users/>}/>
        <Stat label="Salários mensais cadastrados" value={finance?brl(finance.totals.monthlySalariesCents):'—'} hint="Referência contratual, não despesa efetiva" icon={<Receipt/>}/>
@@ -188,8 +190,8 @@ export default function AdminPage(){
      </>}
     {tab==='settings'&&<>
       <div className="ad-heading"><div><h2>Configurações comerciais</h2><p>Defina a mensalidade diretamente no painel. O valor é salvo no MongoDB.</p></div></div>
-      <div className="ad-two-panels"><section className="ad-panel ad-settings-card"><div className="ad-panel-heading"><h3>Mensalidade dos lojistas</h3><CreditCard size={22}/></div><label>Valor da assinatura por 30 dias (R$)<input value={price} onChange={e=>PRICE(e.target.value)} inputMode="decimal" placeholder="Ex.: 39,90"/></label><p>Use <b>0,00</b> para desativar novas cobranças. Alterações não modificam Pix já emitidos, e assinaturas existentes mantêm sua data de vencimento.</p><button className="ad-primary" disabled={busy} onClick={()=>void savePrice()}><Check size={17}/>{busy?'Salvando...':'Salvar mensalidade'}</button></section>
-      <section className="ad-panel ad-settings-card"><div className="ad-panel-heading"><h3>Integração de cobrança</h3><Wallet size={22}/></div><div className="ad-setting-row"><span>Preço configurado</span><strong>{settings?brl(settings.monthlyPriceCents):'—'}</strong></div><div className="ad-setting-row"><span>Mercado Pago da plataforma</span><Badge value={settings?.paymentIntegrationConfigured?'ACTIVE':'ONBOARDING'}/></div><div className="ad-setting-row"><span>Emissão de Pix</span><Badge value={settings?.pixConfigured?'ACTIVE':'EXPIRED'}/></div><p>Credenciais secretas continuam exclusivamente no Heroku. Somente o preço é gerenciado aqui.</p><div className="ad-info"><ShieldCheck size={19}/>O acesso é renovado apenas após pagamento aprovado pelo Mercado Pago ou concessão administrativa auditada.</div></section></div>
+      <div className="ad-two-panels"><section className="ad-panel ad-settings-card"><div className="ad-panel-heading"><h3>Mensalidade dos lojistas</h3><CreditCard size={22}/></div><label>Valor da assinatura por 30 dias (R$)<input value={price} onChange={e=>PRICE(e.target.value)} inputMode="decimal" placeholder="Ex.: 39,90"/></label><label>Teste grátis para novos lojistas (dias)<input type="number" min="0" max="90" step="1" value={trialDays} onChange={e=>TRIALDAYS(e.target.value)} inputMode="numeric"/></label><p>Use <b>0,00</b> para desativar novas cobranças. O novo teste vale para quem se cadastrar depois da alteração; contas existentes mantêm seus dias concedidos. Cobranças anteriores preservam seus valores.</p><button className="ad-primary" disabled={busy} onClick={()=>void savePrice()}><Check size={17}/>{busy?'Salvando...':'Salvar configurações'}</button></section>
+      <section className="ad-panel ad-settings-card"><div className="ad-panel-heading"><h3>Integração de cobrança</h3><Wallet size={22}/></div><div className="ad-setting-row"><span>Preço configurado</span><strong>{settings?brl(settings.monthlyPriceCents):'—'}</strong></div><div className="ad-setting-row"><span>Teste grátis para novos cadastros</span><strong>{settings?`${settings.trialDays} dias`:'—'}</strong></div><div className="ad-setting-row"><span>Mercado Pago da plataforma</span><strong>{settings?.paymentIntegrationConfigured?'Credenciais preenchidas (não homologadas)':'Aguardando configuração'}</strong></div><div className="ad-setting-row"><span>Emissão de Pix</span><strong>{settings?.pixConfigured?'Pré-requisitos preenchidos':'Indisponível'}</strong></div><p>Credenciais secretas continuam exclusivamente no Heroku. Preço e teste grátis são gerenciados aqui.</p><div className="ad-info"><ShieldCheck size={19}/>O acesso é renovado apenas após pagamento aprovado pelo Mercado Pago ou concessão administrativa auditada.</div></section></div>
      </>}
     {tab==='audit'&&<>
       <div className="ad-heading"><div><h2>Registro de auditoria</h2><p>Histórico de ajustes de preços, suspensões, concessões de acesso e alterações de contato.</p></div></div>

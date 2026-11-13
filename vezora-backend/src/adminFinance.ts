@@ -90,7 +90,7 @@ export async function createAdminFinanceReport(query:unknown){
    outstanding:'Saldo dos serviços concluídos ainda não registrado como recebido',
    commissions:'Comissões previstas, não necessariamente pagas',
    monthlySalaries:'Soma dos salários mensais cadastrados; NÃO é despesa efetivamente paga no período',
-   subscriptionReceived:'Assinaturas Pix pagas ao Vezora dentro do período, separadas do faturamento dos estabelecimentos',
+   subscriptionReceived:'Assinaturas pagas ao Vezora via Pix ou cartão dentro do período, separadas do faturamento dos estabelecimentos',
    dataLimit:`Relatórios com mais de ${MAX_BOOKINGS} reservas devem ser divididos; nunca exibimos valores parciais silenciosamente.`}};
 }
 adminFinanceRouter.get('/summary',run(async(req,res)=>{const report=await createAdminFinanceReport(req.query);res.setHeader('Cache-Control','private, no-store');res.json(report);}));

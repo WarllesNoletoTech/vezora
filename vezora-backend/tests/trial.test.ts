@@ -29,3 +29,11 @@ test('o vencimento pago tem prioridade sobre o periodo de teste',()=>{
   const t={businessType:'LASH_DESIGNER',trialStartsAt:now,subscriptionEndsAt:new Date(now.getTime()+10*86400000)};
   assert.equal(accessPeriod(t,now).status,'ACTIVE');
 });
+
+test('configuracao de teste com 7 dias aplica aos novos cadastros',()=>{
+ assert.equal(accessPeriod({businessType:'BARBEARIA',trialStartsAt:now,trialDays:7,subscriptionEndsAt:null},new Date(now.getTime()+6*86400000)).status,'TRIAL');
+ assert.equal(accessPeriod({businessType:'BARBEARIA',trialStartsAt:now,trialDays:7,subscriptionEndsAt:null},new Date(now.getTime()+7*86400000)).status,'EXPIRED');
+});
+test('teste zero dias exige assinatura imediatamente',()=>{
+ assert.equal(accessPeriod({businessType:'BARBEARIA',trialStartsAt:now,trialDays:0,subscriptionEndsAt:null},now).status,'EXPIRED');
+});

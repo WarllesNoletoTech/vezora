@@ -36,11 +36,13 @@ model Tenant {
   // Nulo apenas para contas antigas: atualizar no próximo login.
   businessType   BusinessType?
   trialStartsAt  DateTime?
+  trialDays      Int? // snapshot do periodo de teste no cadastro; null legado equivale a 3
   trialExtensionDays Int? // nulo em contas anteriores a v0.6
   suspendedAt    DateTime?
   suspensionReason String?
   subscriptionEndsAt DateTime?
   subscriptionPayments SubscriptionPayment[]
+  cardSubscription CardSubscription?
   createdAt      DateTime       @default(now())
   services       Service[]
   professionals  Professional[]
@@ -215,6 +217,7 @@ model SubscriptionPayment {
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   amountCents    Int
   status         String   @default("PENDING")
+  paymentMethod  String   @default("PIX") // PIX ou CARD
   mpPaymentId    String?
   qrCode         String   @default("")
   qrCodeBase64   String   @default("")
@@ -237,6 +240,7 @@ enum UserRole {
 model PlatformSettings {
   id                String   @id @default("global") @map("_id")
   monthlyPriceCents Int      @default(0)
+  trialDays         Int      @default(3) // aplicado aos novos cadastros
   updatedAt         DateTime @updatedAt
 }
 
@@ -249,4 +253,31 @@ model AdminAuditLog {
   createdAt DateTime @default(now())
   @@index([createdAt])
   @@index([tenantId, createdAt])
+}
+
+// Autorizacao recorrente de cartao via checkout hospedado do Mercado Pago.
+// O Vezora nunca armazena dados brutos de cartao.
+model CardSubscription {
+  id            String   @id @default(uuid()) @map("_id")
+  tenantId      String   @unique
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  preapprovalId String   @unique @default(uuid())
+  checkoutUrl   String   @default("")
+  status        String   @default("CREATING")
+  amountCents   Int
+  payerEmail    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([tenantId, createdAt])
+}
+
+// Idempotencia real de renovacoes no cartao: um pagamento so gera 30 dias uma vez.
+model CardSubscriptionCharge {
+  id          String   @id @default(uuid()) @map("_id")
+  tenantId    String
+  preapprovalId String
+  mpPaymentId String @unique
+  amountCents Int
+  paidAt      DateTime @default(now())
+  @@index([tenantId, paidAt])
 }

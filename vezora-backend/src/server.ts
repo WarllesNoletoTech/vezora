@@ -18,6 +18,7 @@ import { billingState, hasAccess, generatePix, reconcileSubscription, verifyBill
 import adminRouter from './admin';
 import {financialRoutes} from './financeRoutes';
 import {commissionFor} from './finance';
+import {startCardSubscription,cardSubscriptionStatus,cancelCardSubscription,reconcileCardInvoice,updateCardSubscriptionFromProvider} from './cardSubscriptions';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -67,7 +68,7 @@ const businessTypeSchema=z.nativeEnum(BusinessType);
 function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
   void Promise.all([myTenant(req),db.user.findUnique({where:{id:req.userId},select:{phone:true}})]).then(([t,user])=>{
     if(!t.businessType || !user || !/^\d{10,13}$/.test(user.phone||'')) fail(428,'Atualize seu cadastro e informe um WhatsApp válido para continuar');
-    if(!hasAccess(t)) fail(402,t.suspendedAt?'Este estabelecimento foi suspenso pelo administrador.':'Seu teste grátis terminou. Pague a assinatura por Pix para continuar.');
+    if(!hasAccess(t)) fail(402,t.suspendedAt?'Este estabelecimento foi suspenso pelo administrador.':'Seu teste grátis terminou. Pague a assinatura por Pix ou cartão para continuar.');
     next();
   }).catch(next);
 }
@@ -76,17 +77,19 @@ const accountData = z.object({name,phone,email:z.string().trim().toLowerCase().e
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
 app.get('/api/health',(_req,res)=>res.json({status:'ok',name:'Vezora API'}));
+app.get('/api/platform/public-settings',wrap(async(_req,res)=>{const s=await platformSettings();res.json({trialDays:s.trialDays});}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
   const hash=await bcrypt.hash(body.password,12);
+  const settings=await platformSettings();
   const user=await db.$transaction(async tx=>{
     const user=await tx.user.create({data:{name:body.name,email:body.email,phone:body.phone,role:'LOJISTA',passwordHash:hash}});
     const palette=themeFor(body.businessType);
-    const tenant=await tx.tenant.create({data:{name:body.business,slug:body.slug,ownerId:user.id,businessType:body.businessType,trialStartsAt:new Date(),whatsapp:body.phone,primaryColor:palette.primary,secondaryColor:palette.secondary}});
+    const tenant=await tx.tenant.create({data:{name:body.business,slug:body.slug,ownerId:user.id,businessType:body.businessType,trialStartsAt:new Date(),trialDays:settings.trialDays,whatsapp:body.phone,primaryColor:palette.primary,secondaryColor:palette.secondary}});
     await tx.professional.create({data:{tenantId:tenant.id,name:body.name,schedule:DEFAULT_SCHEDULE,role:'OWNER'}});
     return user;
   });
-  session(res,user.id); res.status(201).json({ok:true,trialDays:3});
+  session(res,user.id); res.status(201).json({ok:true,trialDays:settings.trialDays});
 }));
 app.post('/api/auth/login',wrap(async(req,res)=>{
   const body=z.object({email:z.string().email(),password:z.string()}).parse(req.body);
@@ -113,18 +116,18 @@ app.patch('/api/tenant/onboarding',auth,wrap(async(req,res)=>{
   const old=await myTenant(req);
   const data=z.object({businessType:businessTypeSchema,name:name.optional(),phone}).strict().parse(req.body);
   const theme=themeFor(data.businessType);
+  const settings=await platformSettings();
   const usingOldColors=old.primaryColor==='#8F5176'&&old.secondaryColor==='#211925';
   const updated=await db.$transaction(async tx=>{
     await tx.user.update({where:{id:req.userId!},data:{phone:data.phone}});
     return tx.tenant.update({where:{id:old.id},data:{
       businessType:data.businessType,...(data.name?{name:data.name}:{}),
       ...(!old.whatsapp?{whatsapp:data.phone}:{}),
-      // Contas antigas ganham tres dias apenas quando ainda nao tem trial registrado.
-      ...(!old.trialStartsAt?{trialStartsAt:new Date()}:{}),
+      // Contas antigas sem teste registrado recebem o prazo comercial vigente.
+      ...(!old.trialStartsAt?{trialStartsAt:new Date(),trialDays:settings.trialDays}:{}),
       ...(usingOldColors?{primaryColor:theme.primary,secondaryColor:theme.secondary}:{})
     }});
   });
-  const settings=await platformSettings();
   res.json({tenant:updated,billing:billingState(updated,settings.monthlyPriceCents)});
 }));
 
@@ -194,11 +197,11 @@ app.patch('/api/bookings/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
 }));
 
 app.get('/api/public/:slug',wrap(async(req,res)=>{
-  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,primaryColor:true,secondaryColor:true,timezone:true,businessType:true,trialStartsAt:true,trialExtensionDays:true,suspendedAt:true,subscriptionEndsAt:true,paymentAccount:{select:{id:true}},services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
+  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,primaryColor:true,secondaryColor:true,timezone:true,businessType:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,suspendedAt:true,subscriptionEndsAt:true,paymentAccount:{select:{id:true}},services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
   if(!t) fail(404,'Estabelecimento não encontrado');
   const {paymentAccount,...publicData}=t;
   const state=billingState(t);
-  const {trialStartsAt,trialExtensionDays,suspendedAt,subscriptionEndsAt,...safe}=publicData;
+  const {trialStartsAt,trialDays,trialExtensionDays,suspendedAt,subscriptionEndsAt,...safe}=publicData;
   res.json({...safe,paymentAvailable:!!paymentAccount&&mpReady(),bookingEnabled:state.status==='TRIAL'||state.status==='ACTIVE'});
 }));
 app.get('/api/public/:slug/availability',wrap(async(req,res)=>{
@@ -311,6 +314,8 @@ app.post('/api/billing/pix',auth,wrap(async(req,res)=>{
   if(tenant.suspendedAt)fail(403,'Este estabelecimento está suspenso. Contate o administrador.');
   const settings=await platformSettings();
   if(!env.VEZORA_MP_ACCESS_TOKEN||!env.VEZORA_MP_WEBHOOK_SECRET||!env.API_PUBLIC_URL||settings.monthlyPriceCents<100) fail(503,'Pagamento Pix ou mensalidade ainda não configurados pelo administrador do Vezora');
+  const activeCard=await db.cardSubscription.findUnique({where:{tenantId:tenant.id},select:{status:true}});
+  if(activeCard&&['PENDING','AUTHORIZED','PAUSED','CREATING'].includes(activeCard.status))fail(409,'Existe uma autorização de cartão. Cancele a renovação antes de gerar Pix para evitar cobrança duplicada.');
   const user=await db.user.findUnique({where:{id:req.userId}});
   if(!user) fail(401,'Sessão inválida');
   // A cobrança guarda o valor escolhido pelo admin no momento da emissão;
@@ -335,11 +340,34 @@ app.post('/api/billing/check/:id',auth,wrap(async(req,res)=>{
   const settings=await platformSettings();
   res.json({paymentStatus:updatedInvoice.status,...billingState(updated,settings.monthlyPriceCents)});
 }));
+
+// Cartão recorrente: autorização do cartão é feita no checkout seguro do Mercado Pago.
+app.get('/api/billing/card/status',auth,wrap(async(req,res)=>{
+  const t=await myTenant(req);res.json(await cardSubscriptionStatus(t.id,true));
+}));
+app.post('/api/billing/card/start',auth,wrap(async(req,res)=>{
+  const t=await myTenant(req);
+  if(t.suspendedAt)fail(403,'Estabelecimento suspenso.');
+  if(!t.businessType)fail(428,'Complete o cadastro antes de assinar.');
+  const owner=await db.user.findUnique({where:{id:req.userId},select:{email:true,phone:true}});
+  if(!owner||!owner.phone)fail(428,'Informe WhatsApp no cadastro.');
+  const s=await platformSettings();
+  if(s.monthlyPriceCents<100)fail(503,'Defina a mensalidade no painel do administrador.');
+  const pendingPix=await db.subscriptionPayment.findFirst({where:{tenantId:t.id,status:'PENDING',expiresAt:{gt:new Date()}},select:{id:true}});
+  if(pendingPix)fail(409,'Há um Pix pendente. Aguarde seu vencimento antes de cadastrar cartão.');
+  const created=await startCardSubscription(t.id,owner.email,s.monthlyPriceCents);
+  res.json(created);
+}));
+app.post('/api/billing/card/cancel',auth,wrap(async(req,res)=>{
+  const t=await myTenant(req);await cancelCardSubscription(t.id);res.json({ok:true});
+}));
 app.post('/api/billing/webhook',wrap(async(req,res)=>{
   const dataId=String(req.query['data.id']||'');
-  if(!/^\d{1,24}$/.test(dataId)||!verifyBillingWebhook(String(req.headers['x-signature']||''),String(req.headers['x-request-id']||''),dataId))fail(401,'Assinatura inválida');
-  if(req.query.type!=='payment'&&req.body?.type!=='payment')return res.json({received:true});
-  await reconcileSubscription(dataId);
+  if(!/^[a-zA-Z0-9_-]{1,100}$/.test(dataId)||!verifyBillingWebhook(String(req.headers['x-signature']||''),String(req.headers['x-request-id']||''),dataId))fail(401,'Assinatura inválida');
+  const type=String(req.query.type||req.body?.type||'');
+  if(type==='payment'&&/^\d{1,24}$/.test(dataId))await reconcileSubscription(dataId);
+  if(type==='subscription_authorized_payment'&&/^\d{1,24}$/.test(dataId))await reconcileCardInvoice(dataId);
+  if(type==='subscription_preapproval')await updateCardSubscriptionFromProvider(dataId);
   res.json({received:true});
 }));
 

@@ -18,7 +18,7 @@ const paging=z.coerce.number().int().min(1).max(100000).default(1);
 const query=z.string().trim().max(90).default('');
 const reason=z.string().trim().min(8,'Informe uma justificativa com 8 caracteres ou mais').max(240);
 const perPage=15;
-const summaryTenantSelect={id:true,businessType:true,trialStartsAt:true,trialExtensionDays:true,subscriptionEndsAt:true,suspendedAt:true,createdAt:true} as const;
+const summaryTenantSelect={id:true,businessType:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,subscriptionEndsAt:true,suspendedAt:true,createdAt:true} as const;
 async function audit(actorId:string,action:string,tenantId:string|undefined,details:string){
   await db.adminAuditLog.create({data:{actorId,action,tenantId,details:details.slice(0,600)}});
 }
@@ -39,22 +39,22 @@ router.get('/summary',run(async(_req,res)=>{
   for(const t of tenants){const st=accessPeriod(t).status;statusCounts[st]=(statusCounts[st]||0)+1;types[t.businessType||'PENDENTE']=(types[t.businessType||'PENDENTE']||0)+1;}
   res.json({totalTenants:tenants.length,totalOwners:owners-admins,totalBookings:bookings,newTenants30:tenants.filter(t=>t.createdAt>=new Date(Date.now()-30*86400000)).length,
     statusCounts,types,receivedTotalCents:receipts._sum.amountCents||0,received30Cents:received30._sum.amountCents||0,paidPaymentCount:receipts._count._all,
-    latestPayments:latest,monthlyPriceCents:setting.monthlyPriceCents});
+    latestPayments:latest,monthlyPriceCents:setting.monthlyPriceCents,trialDays:setting.trialDays});
 }));
 router.get('/settings',run(async(_req,res)=>{
   const s=await platformSettings();
-  res.json({monthlyPriceCents:s.monthlyPriceCents,updatedAt:s.updatedAt,pixConfigured:Boolean(s.monthlyPriceCents>=100&&env.VEZORA_MP_ACCESS_TOKEN&&env.VEZORA_MP_WEBHOOK_SECRET&&env.API_PUBLIC_URL),
+  res.json({monthlyPriceCents:s.monthlyPriceCents,trialDays:s.trialDays,updatedAt:s.updatedAt,pixConfigured:Boolean(s.monthlyPriceCents>=100&&env.VEZORA_MP_ACCESS_TOKEN&&env.VEZORA_MP_WEBHOOK_SECRET&&env.API_PUBLIC_URL),
     paymentIntegrationConfigured:Boolean(env.VEZORA_MP_ACCESS_TOKEN&&env.VEZORA_MP_WEBHOOK_SECRET&&env.API_PUBLIC_URL)});
 }));
 router.patch('/settings',run(async(req,res)=>{
-  const body=z.object({monthlyPriceCents:z.number().int().refine(v=>v===0||(v>=100&&v<=500000),'Informe zero ou valor entre R$ 1,00 e R$ 5.000,00')}).strict().parse(req.body);
+  const body=z.object({monthlyPriceCents:z.number().int().refine(v=>v===0||(v>=100&&v<=500000),'Informe zero ou valor entre R$ 1,00 e R$ 5.000,00').optional(),trialDays:z.number().int().min(0).max(90).optional()}).strict().refine(v=>v.monthlyPriceCents!==undefined||v.trialDays!==undefined,'Informe uma configuração').parse(req.body);
   const before=await platformSettings();
   const saved=await db.$transaction(async tx=>{
-    const updated=await tx.platformSettings.update({where:{id:'global'},data:{monthlyPriceCents:body.monthlyPriceCents}});
-    await tx.adminAuditLog.create({data:{actorId:req.userId!,action:'SET_MONTHLY_PRICE',details:`de ${before.monthlyPriceCents} para ${updated.monthlyPriceCents} centavos`}});
+    const updated=await tx.platformSettings.update({where:{id:'global'},data:{...(body.monthlyPriceCents!==undefined?{monthlyPriceCents:body.monthlyPriceCents}:{}),...(body.trialDays!==undefined?{trialDays:body.trialDays}:{})}});
+    await tx.adminAuditLog.create({data:{actorId:req.userId!,action:'UPDATE_BILLING_SETTINGS',details:`preço: ${before.monthlyPriceCents} -> ${updated.monthlyPriceCents} centavos; teste: ${before.trialDays} -> ${updated.trialDays} dias`}});
     return updated;
   });
-  res.json({monthlyPriceCents:saved.monthlyPriceCents,updatedAt:saved.updatedAt});
+  res.json({monthlyPriceCents:saved.monthlyPriceCents,trialDays:saved.trialDays,updatedAt:saved.updatedAt});
 }));
 
 /** Exporta dados operacionais (ate 5.000 linhas) exclusivamente para SUPERADMIN. */
@@ -71,7 +71,7 @@ function sendCsv(res:Response,name:string,columns:string[],rows:unknown[][]){
   res.send(body);
 }
 router.get('/export/tenants',run(async(_req,res)=>{
-  const records=await db.tenant.findMany({take:5000,orderBy:{createdAt:'desc'},select:{name:true,slug:true,businessType:true,createdAt:true,subscriptionEndsAt:true,trialStartsAt:true,trialExtensionDays:true,suspendedAt:true,owner:{select:{name:true,email:true,phone:true}}}});
+  const records=await db.tenant.findMany({take:5000,orderBy:{createdAt:'desc'},select:{name:true,slug:true,businessType:true,createdAt:true,subscriptionEndsAt:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,suspendedAt:true,owner:{select:{name:true,email:true,phone:true}}}});
   sendCsv(res,'vezora-estabelecimentos.csv',['Estabelecimento','Slug','Segmento','Lojista','Email','WhatsApp','Criado em','Status','Vencimento assinatura'],records.map(t=>[t.name,t.slug,t.businessType||'',t.owner.name,t.owner.email,t.owner.phone||'',t.createdAt.toISOString(),accessPeriod(t).status,t.subscriptionEndsAt?.toISOString()||'']));
 }));
 router.get('/export/payments',run(async(_req,res)=>{
@@ -79,11 +79,11 @@ router.get('/export/payments',run(async(_req,res)=>{
     take:5000,
     orderBy:{createdAt:'desc'},
     select:{
-      id:true,status:true,amountCents:true,createdAt:true,paidAt:true,
+      id:true,status:true,paymentMethod:true,amountCents:true,createdAt:true,paidAt:true,
       tenant:{select:{name:true,owner:{select:{email:true}}}}
     }
   });
-  sendCsv(res,'vezora-cobrancas.csv',['ID','Estabelecimento','Email','Valor (R$)','Status','Emissao','Pagamento'],records.map(p=>[p.id,p.tenant.name,p.tenant.owner.email,(p.amountCents/100).toFixed(2).replace('.',','),p.status,p.createdAt.toISOString(),p.paidAt?.toISOString()||'']));
+  sendCsv(res,'vezora-cobrancas.csv',['ID','Estabelecimento','Email','Metodo','Valor (R$)','Status','Emissao','Pagamento'],records.map(p=>[p.id,p.tenant.name,p.tenant.owner.email,p.paymentMethod,(p.amountCents/100).toFixed(2).replace('.',','),p.status,p.createdAt.toISOString(),p.paidAt?.toISOString()||'']));
 }));
 
 router.get('/tenants',run(async(req,res)=>{
@@ -161,7 +161,7 @@ router.patch('/users/:id/phone',run(async(req,res)=>{
 router.get('/payments',run(async(req,res)=>{
   const {page,status}=z.object({page:paging,status:z.enum(['TODOS','PENDING','PAID','EXPIRED','CANCELLED']).default('TODOS')}).parse(req.query);
   const where:Prisma.SubscriptionPaymentWhereInput=status==='TODOS'?{}:{status};
-  const [total,items]=await Promise.all([db.subscriptionPayment.count({where}),db.subscriptionPayment.findMany({where,take:perPage,skip:(page-1)*perPage,orderBy:{createdAt:'desc'},select:{id:true,status:true,amountCents:true,createdAt:true,paidAt:true,expiresAt:true,tenant:{select:{id:true,name:true,slug:true,owner:{select:{name:true,email:true}}}}}})]);
+  const [total,items]=await Promise.all([db.subscriptionPayment.count({where}),db.subscriptionPayment.findMany({where,take:perPage,skip:(page-1)*perPage,orderBy:{createdAt:'desc'},select:{id:true,status:true,paymentMethod:true,amountCents:true,createdAt:true,paidAt:true,expiresAt:true,tenant:{select:{id:true,name:true,slug:true,owner:{select:{name:true,email:true}}}}}})]);
   res.json({total,page,pageSize:perPage,items});
 }));
 router.get('/audit',run(async(req,res)=>{

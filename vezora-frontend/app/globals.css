@@ -485,3 +485,19 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .ad-diagnostic-status.ok{background:#e2f3e9;color:#176846}.ad-diagnostic-status.failed{background:#fce7e7;color:#a12929}
 .ad-diagnostic-results button:disabled{opacity:.6;cursor:default}
 @media(max-width:480px){.ad-bootstrap-card,.ad-diagnostic-card{padding:25px 18px}}
+/* Vezora Assinaturas — escolha de pagamento acessível em mobile e desktop */
+.subscription-card-wide{max-width:600px;width:min(94vw,600px)}
+.subscription-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.subscription-back{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#4b6b77;text-decoration:none}
+.subscription-status{display:flex;align-items:center;gap:12px;border-radius:13px;padding:12px 14px;background:#eaf7f2;color:#2a6857;margin:16px 0}
+.subscription-status div{display:flex;flex-direction:column;gap:3px}
+.subscription-status small{font-weight:500}
+.payment-methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:18px 0}
+.payment-method{border:1.5px solid #e0e2e9;border-radius:13px;padding:13px;background:#fff;display:flex;text-align:left;align-items:center;gap:10px;color:#313b4b;cursor:pointer}
+.payment-method.selected{border-color:#346a77;background:#ebf6f8;box-shadow:0 0 0 2px #346a7719}
+.payment-method span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.payment-method b{font-size:13px}.payment-method small{font-size:11px;line-height:1.35}
+.payment-content{display:flex;flex-direction:column;gap:12px;margin:0 0 14px}.card-subscription-content p{font-size:13px;line-height:1.65}
+.card-state{border:1px solid #dce5ec;background:#f4f9fc;border-radius:13px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.card-actions{display:flex;flex-wrap:wrap;gap:8px}.card-actions .btn{flex:1 1 150px;justify-content:center}
+@media(max-width:520px){.subscription-card-wide{max-width:100%;width:100%;padding:20px 15px}.payment-methods{grid-template-columns:1fr}.payment-method{min-height:66px}.subscription-top{align-items:flex-start}.card-actions{flex-direction:column}}

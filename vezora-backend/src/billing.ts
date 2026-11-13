@@ -6,16 +6,17 @@ import { accessPeriod,BILLING_DAYS } from './trial';
 
 export async function platformSettings() {
   // O primeiro acesso cria a configuracao neutra (valor zero): nao cobra sem preco salvo.
-  return db.platformSettings.upsert({where:{id:'global'},create:{id:'global',monthlyPriceCents:0},update:{}});
+  return db.platformSettings.upsert({where:{id:'global'},create:{id:'global',monthlyPriceCents:0,trialDays:3},update:{}});
 }
-export function billingState(tenant: Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'|'trialExtensionDays'|'suspendedAt'>, monthlyPriceCents=0, now=new Date()) {
+export function billingState(tenant: Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'|'trialDays'|'trialExtensionDays'|'suspendedAt'>, monthlyPriceCents=0, now=new Date()) {
   return {
     ...accessPeriod(tenant,now),
     monthlyPriceCents,
-    pixConfigured:Boolean(monthlyPriceCents>=100 && env.VEZORA_MP_ACCESS_TOKEN && env.VEZORA_MP_WEBHOOK_SECRET && env.API_PUBLIC_URL)
+    pixConfigured:Boolean(monthlyPriceCents>=100 && env.VEZORA_MP_ACCESS_TOKEN && env.VEZORA_MP_WEBHOOK_SECRET && env.API_PUBLIC_URL),
+    cardConfigured:Boolean(monthlyPriceCents>=100 && env.VEZORA_MP_ACCESS_TOKEN && env.VEZORA_MP_WEBHOOK_SECRET && env.API_PUBLIC_URL)
   };
 }
-export function hasAccess(tenant:Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'|'trialExtensionDays'|'suspendedAt'>) {
+export function hasAccess(tenant:Pick<Tenant,'trialStartsAt'|'subscriptionEndsAt'|'businessType'|'trialDays'|'trialExtensionDays'|'suspendedAt'>) {
   return ['ACTIVE','TRIAL'].includes(accessPeriod(tenant).status);
 }
 
