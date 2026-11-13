@@ -320,7 +320,7 @@ app.get('/api/billing/status',auth,wrap(async(req,res)=>{
 }));
 app.post('/api/billing/pix',auth,wrap(async(req,res)=>{
   const tenant=await myTenant(req);
-  const data=z.object({document:z.string().transform(x=>x.replace(/\D/g,'')).refine(x=>x.length===11||x.length===14,'Informe CPF ou CNPJ válido'),deviceId:z.string().max(220).optional()}).strict().parse(req.body);
+  const data=z.object({document:z.string().transform(x=>x.replace(/\D/g,'')).refine(x=>x.length===11||x.length===14,'Informe CPF ou CNPJ válido'),deviceId:z.preprocess(value=>validDeviceId(value)?value:undefined,z.string().optional())}).strict().parse(req.body);
   if(!tenant.businessType) fail(428,'Atualize o tipo de negócio antes de pagar');
   const contact=await db.user.findUnique({where:{id:req.userId},select:{phone:true}});
   if(!contact || !/^\d{10,13}$/.test(contact.phone||'')) fail(428,'Complete seu cadastro com WhatsApp antes de pagar');
