@@ -1,13 +1,29 @@
 'use client';
 import {useEffect,useState} from 'react';
-import type {FormEvent} from 'react';
+import type {FormEvent,CSSProperties} from 'react';
 import {useRouter} from 'next/navigation';
 import Link from 'next/link';
-import {ArrowRight,Building2} from 'lucide-react';
+import {ArrowRight,Building2,CheckCircle2,CalendarClock} from 'lucide-react';
 import Brand from '@/components/Brand';
+import BusinessMotif from '@/components/BusinessMotif';
+import {businessOptions,BusinessType,businessTheme} from '@/lib/business';
 import {api} from '@/lib/api';
-export default function Signup(){const r=useRouter();const [form,F]=useState({name:'',email:'',password:'',business:'',slug:''});const [error,S]=useState('');const [busy,B]=useState(false);const [slugEdited,D]=useState(false);const [host,HOST]=useState('vezora-agendamentos.vercel.app');const [showPassword,SHOW]=useState(false);
-useEffect(()=>HOST(window.location.host),[]);
-function update(k:keyof typeof form,v:string){F(old=>({...old,[k]:v,...(k==='business'&&!slugEdited?{slug:v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')}: {})}));}
-async function submit(e:FormEvent){e.preventDefault();B(true);S('');try{await api('/auth/register',{method:'POST',body:JSON.stringify(form)});r.push('/painel');r.refresh();}catch(x){S((x as Error).message)}finally{B(false)}}
-return <main className="auth-shell"><div className="auth-aside"><Brand light/><div><span className="overline">BEM-VINDO À VEZORA</span><h1>Uma experiência<br/><em>com a sua marca.</em></h1><p>Seu espaço online de agendamentos começa aqui.</p></div><small>Vezora • Sua marca. Sua agenda.</small></div><div className="auth-main"><div className="auth-form"><div className="auth-icon"><Building2/></div><h2>Crie seu espaço</h2><p>Leva só alguns minutos para começar.</p><form onSubmit={submit}><label>Seu nome<input autoComplete="name" required minLength={2} value={form.name} onChange={e=>update('name',e.target.value)} placeholder="Seu nome completo"/></label><label>Nome do estabelecimento<input autoComplete="organization" required minLength={2} value={form.business} onChange={e=>update('business',e.target.value)} placeholder="Ex.: Studio Bella"/></label><label>Seu link de agendamento<div className="slug-input"><span>{host}/</span><input required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={e=>{D(true);update('slug',e.target.value.toLowerCase())}} placeholder="studio-bella"/></div></label><label>E-mail<input type="email" inputMode="email" autoComplete="email" required value={form.email} onChange={e=>update('email',e.target.value)} placeholder="seu@email.com"/></label><label>Senha<div className="password-field"><input type={showPassword?"text":"password"} autoComplete="new-password" required minLength={8} value={form.password} onChange={e=>update('password',e.target.value)} placeholder="Mínimo de 8 caracteres"/><button type="button" onClick={()=>SHOW(x=>!x)} aria-label={showPassword?"Ocultar senha":"Mostrar senha"}>{showPassword?"Ocultar":"Mostrar"}</button></div></label>{error&&<div className="alert error" role="alert">{error}</div>}<button className="btn btn-primary wide" disabled={busy} aria-busy={busy}>{busy?'Criando...':'Criar meu espaço'} <ArrowRight size={18}/></button></form><p className="auth-switch">Já tem uma conta? <Link href="/entrar">Entrar</Link></p></div></div></main>}
+export default function Signup(){
+ const r=useRouter();const [form,F]=useState({name:'',email:'',password:'',business:'',slug:'',businessType:''});
+ const [error,S]=useState(''),[busy,B]=useState(false),[slugEdited,D]=useState(false),[host,HOST]=useState('vezora-agendamentos.vercel.app'),[showPassword,SHOW]=useState(false);
+ useEffect(()=>HOST(window.location.host),[]);
+ function update(k:keyof typeof form,v:string){F(old=>({...old,[k]:v,...(k==='business'&&!slugEdited?{slug:v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')}: {})}));}
+ async function submit(e:FormEvent){e.preventDefault();B(true);S('');try{await api('/auth/register',{method:'POST',body:JSON.stringify(form)});r.replace('/painel');r.refresh();}catch(x){S((x as Error).message)}finally{B(false)}}
+ const theme=businessTheme(form.businessType as BusinessType);
+ return <main className="auth-shell auth-neutral"><div className="auth-aside"><Brand light/><div><span className="overline">BEM-VINDO À VEZORA</span><h1>Seu negócio.<br/><em>Sua identidade.</em></h1><p>Uma agenda para barbearias, salões, nail designers e muito mais.</p><div className="auth-trial-note"><CalendarClock size={19}/> 3 dias grátis para experimentar. Depois, assinatura por Pix.</div></div><small>Vezora • Seu tempo, sua marca.</small></div><div className="auth-main"><div className="auth-form"><div className="auth-icon"><Building2/></div><h2>Crie seu espaço</h2><p>Conte o que você faz para personalizarmos sua experiência.</p><form onSubmit={submit}>
+ <label>Seu nome<input autoComplete="name" required minLength={2} value={form.name} onChange={e=>update('name',e.target.value)} placeholder="Seu nome completo"/></label>
+ <label>Tipo de negócio<select required value={form.businessType} onChange={e=>update('businessType',e.target.value)}><option value="" disabled>Selecione sua área de atuação</option>{businessOptions.map(o=><option value={o.value} key={o.value}>{o.label}</option>)}</select></label>
+ {form.businessType&&<div className="business-type-preview" style={{'--business-primary':theme.primary,'--business-secondary':theme.secondary} as CSSProperties}><BusinessMotif type={theme.value}/><span><b>{theme.headline}</b><small>Seu site e painel começarão com as cores e o estilo dessa área. Você poderá personalizar depois.</small></span></div>}
+ <label>Nome do estabelecimento<input autoComplete="organization" required minLength={2} value={form.business} onChange={e=>update('business',e.target.value)} placeholder="Ex.: Barbearia Central"/></label>
+ <label>Seu link de agendamento<div className="slug-input"><span>{host}/</span><input required minLength={3} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={e=>{D(true);update('slug',e.target.value.toLowerCase())}} placeholder="meu-negocio"/></div></label>
+ <label>E-mail<input type="email" autoComplete="email" required value={form.email} onChange={e=>update('email',e.target.value)} placeholder="seu@email.com"/></label>
+ <label>Senha<div className="password-field"><input type={showPassword?'text':'password'} autoComplete="new-password" required minLength={8} value={form.password} onChange={e=>update('password',e.target.value)} placeholder="Mínimo de 8 caracteres"/><button type="button" onClick={()=>SHOW(x=>!x)} aria-label={showPassword?'Ocultar senha':'Mostrar senha'}>{showPassword?'Ocultar':'Mostrar'}</button></div></label>
+ <div className="signup-trial"><CheckCircle2 size={18}/> Teste grátis por 3 dias. Para continuar depois, pagamento mensal via Pix.</div>
+ {error&&<div className="alert error" role="alert">{error}</div>}
+ <button className="btn btn-primary wide" disabled={busy} aria-busy={busy}>{busy?'Criando...':'Começar meus 3 dias grátis'} <ArrowRight size={18}/></button></form><p className="auth-switch">Já tem uma conta? <Link href="/entrar">Entrar</Link></p></div></div></main>
+}

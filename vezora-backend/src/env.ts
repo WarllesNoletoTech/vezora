@@ -20,6 +20,11 @@ const schema = z.object({
   API_PUBLIC_URL: z.union([z.literal(''), z.string().url()]).default(''),
   JWT_SECRET: z.string().min(32),
   TOKEN_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'Exige 32 bytes em hexadecimal'),
+  // Cobrança da plataforma: conta do Vezora (independente do OAuth dos lojistas).
+  VEZORA_MP_ACCESS_TOKEN: z.string().default(''),
+  VEZORA_MP_WEBHOOK_SECRET: z.string().default(''),
+  VEZORA_MP_COLLECTOR_ID: z.string().default(''),
+  VEZORA_MONTHLY_PRICE_CENTS: z.coerce.number().int().min(0).default(0),
   MP_CLIENT_ID: z.string().default(''),
   MP_CLIENT_SECRET: z.string().default(''),
   MP_REDIRECT_URI: z.string().default(''),

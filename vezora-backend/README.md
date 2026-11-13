@@ -68,3 +68,6 @@ Documentação: https://www.prisma.io/docs/orm/v6/overview/databases/mongodb
 - Se o Heroku utilizar repositório mono-repo, a raiz do projeto precisa ser `vezora-backend`. O `Procfile` é `web: npm start`.
 - Mantenha `WEB_URL` como a origem do frontend (sem caminho), por exemplo `https://vezora-agendamentos.vercel.app`.
 - Antes de pagamentos reais, gere novas credenciais privadas (as chaves mostradas em capturas de tela não devem ser reutilizadas).
+
+## Atualização v0.5
+Consulte `GUIA_ATUALIZACAO_V05.md` para categorias, período de teste e assinatura Pix.

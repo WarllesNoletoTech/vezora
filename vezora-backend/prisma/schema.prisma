@@ -31,6 +31,11 @@ model Tenant {
   primaryColor   String         @default("#8F5176")
   secondaryColor String         @default("#211925")
   timezone       String         @default("America/Sao_Paulo")
+  // Nulo apenas para contas antigas: atualizar no próximo login.
+  businessType   BusinessType?
+  trialStartsAt  DateTime?
+  subscriptionEndsAt DateTime?
+  subscriptionPayments SubscriptionPayment[]
   createdAt      DateTime       @default(now())
   services       Service[]
   professionals  Professional[]
@@ -129,4 +134,38 @@ model OAuthState {
   encryptedVerifier String
   expiresAt         DateTime
   createdAt         DateTime  @default(now())
+}
+
+// Categorias comuns no Brasil — não limitamos o sistema apenas a salões.
+enum BusinessType {
+  BARBEARIA
+  CABELEIREIRO
+  SALAO_BELEZA
+  NAIL_DESIGNER
+  MANICURE_PEDICURE
+  LASH_DESIGNER
+  SOBRANCELHAS
+  ESTETICA
+  MAQUIAGEM
+  DEPILACAO
+  MASSOTERAPIA
+  PODOLOGIA
+  OUTROS
+}
+
+model SubscriptionPayment {
+  id             String   @id @default(uuid()) @map("_id")
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  amountCents    Int
+  status         String   @default("PENDING")
+  mpPaymentId    String?
+  qrCode         String   @default("")
+  qrCodeBase64   String   @default("")
+  ticketUrl      String   @default("")
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  paidAt         DateTime?
+  @@index([tenantId, status, createdAt])
+  @@index([mpPaymentId])
 }

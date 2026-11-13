@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { Prisma, BookingStatus, DepositMode } from '@prisma/client';
+import { Prisma, BookingStatus, DepositMode, BusinessType } from '@prisma/client';
 import { z, ZodError } from 'zod';
 import { DateTime } from 'luxon';
 import { db } from './db';
@@ -13,6 +13,8 @@ import { env } from './env';
 import { DEFAULT_SCHEDULE, depositCents, localSlot, phoneDigits, slotsForDay, Schedule } from './core';
 import { decrypt, encrypt, rand, sha256 } from './crypto';
 import { createPreference, exchangeCode, getPayment, mpReady, validMpWebhook } from './mp';
+import { themeFor } from './business';
+import { billingState, hasAccess, generatePix, reconcileSubscription, verifyBillingWebhook } from './billing';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -57,20 +59,31 @@ const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 const name = z.string().trim().min(2).max(90);
 const slug = z.string().trim().min(3).max(45).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const phone = z.string().transform(phoneDigits).pipe(z.string().min(10).max(13));
+const businessTypeSchema=z.nativeEnum(BusinessType);
+function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
+  void myTenant(req).then(t=>{
+    const state=billingState(t);
+    if(state.status==='ONBOARDING') fail(428,'Complete o tipo de negócio antes de continuar');
+    if(!hasAccess(t)) fail(402,'Seu teste grátis terminou. Pague a assinatura por Pix para continuar.');
+    next();
+  }).catch(next);
+}
+
 const accountData = z.object({name,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
 app.get('/api/health',(_req,res)=>res.json({status:'ok',name:'Vezora API'}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
-  const body=accountData.extend({business:name,slug}).parse(req.body);
+  const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
   const hash=await bcrypt.hash(body.password,12);
   const user=await db.$transaction(async tx=>{
     const user=await tx.user.create({data:{name:body.name,email:body.email,passwordHash:hash}});
-    const tenant=await tx.tenant.create({data:{name:body.business,slug:body.slug,ownerId:user.id}});
+    const palette=themeFor(body.businessType);
+    const tenant=await tx.tenant.create({data:{name:body.business,slug:body.slug,ownerId:user.id,businessType:body.businessType,trialStartsAt:new Date(),primaryColor:palette.primary,secondaryColor:palette.secondary}});
     await tx.professional.create({data:{tenantId:tenant.id,name:body.name,schedule:DEFAULT_SCHEDULE}});
     return user;
   });
-  session(res,user.id); res.status(201).json({ok:true});
+  session(res,user.id); res.status(201).json({ok:true,trialDays:3});
 }));
 app.post('/api/auth/login',wrap(async(req,res)=>{
   const body=z.object({email:z.string().email(),password:z.string()}).parse(req.body);
@@ -85,11 +98,26 @@ app.post('/api/auth/logout',(_req,res)=>{
 app.get('/api/me',auth,wrap(async(req,res)=>{
   const user=await db.user.findUnique({where:{id:req.userId},select:{id:true,name:true,email:true}});
   const tenant=await myTenant(req);
-  res.json({user,tenant});
+  res.json({user,tenant,billing:billingState(tenant),onboardingRequired:!tenant.businessType});
 }));
-app.patch('/api/tenant',auth,wrap(async(req,res)=>{
+app.patch('/api/tenant/onboarding',auth,wrap(async(req,res)=>{
+  const old=await myTenant(req);
+  const data=z.object({businessType:businessTypeSchema,name:name.optional()}).strict().parse(req.body);
+  const theme=themeFor(data.businessType);
+  const usingOldColors=old.primaryColor==='#8F5176'&&old.secondaryColor==='#211925';
+  const updated=await db.tenant.update({where:{id:old.id},data:{
+    businessType:data.businessType,...(data.name?{name:data.name}:{}),
+    // Contas antigas ganham três dias após completar a atualização obrigatória.
+    ...(!old.trialStartsAt?{trialStartsAt:new Date()}:{}),
+    ...(usingOldColors?{primaryColor:theme.primary,secondaryColor:theme.secondary}:{})
+  }});
+  res.json({tenant:updated,billing:billingState(updated)});
+}));
+
+app.patch('/api/tenant',auth,subscriptionGuard,wrap(async(req,res)=>{
   const tenant=await myTenant(req);
   const update=z.object({
+    businessType:businessTypeSchema.optional(),
     name:name.optional(),bio:z.string().max(400).optional(),
     whatsapp:z.string().max(22).optional(),instagram:z.string().max(120).optional(),
     address:z.string().max(240).optional(),logoUrl:cleanUrl.optional(),coverUrl:cleanUrl.optional(),
@@ -101,9 +129,9 @@ app.patch('/api/tenant',auth,wrap(async(req,res)=>{
 
 const serviceFields=z.object({name,description:z.string().max(500).default(''),priceCents:z.number().int().min(0).max(10_000_000),durationMin:z.number().int().min(15).max(720),depositMode:z.nativeEnum(DepositMode).default('NONE'),depositValue:z.number().int().min(0).max(10_000_000).default(0),active:z.boolean().default(true)});
 const serviceInput=serviceFields.refine(v=>v.depositMode!=='PERCENT'||v.depositValue<=100,{message:'Percentual não pode superar 100%'}).refine(v=>v.depositMode!=='FIXED'||v.depositValue<=v.priceCents,{message:'Sinal maior que o valor do serviço'});
-app.get('/api/services',auth,wrap(async(req,res)=>{const t=await myTenant(req);res.json(await db.service.findMany({where:{tenantId:t.id},orderBy:{createdAt:'desc'}}));}));
-app.post('/api/services',auth,wrap(async(req,res)=>{const t=await myTenant(req);res.status(201).json(await db.service.create({data:{...serviceInput.parse(req.body),tenantId:t.id}}));}));
-app.patch('/api/services/:id',auth,wrap(async(req,res)=>{
+app.get('/api/services',auth,subscriptionGuard,wrap(async(req,res)=>{const t=await myTenant(req);res.json(await db.service.findMany({where:{tenantId:t.id},orderBy:{createdAt:'desc'}}));}));
+app.post('/api/services',auth,subscriptionGuard,wrap(async(req,res)=>{const t=await myTenant(req);res.status(201).json(await db.service.create({data:{...serviceInput.parse(req.body),tenantId:t.id}}));}));
+app.patch('/api/services/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const old=await db.service.findFirst({where:{tenantId:t.id,id:String(req.params.id)}});
   if(!old) fail(404,'Serviço não encontrado');
@@ -116,9 +144,9 @@ const workday=z.union([z.null(),z.tuple([z.string().regex(timePattern),z.string(
 const scheduleSchema=z.record(z.enum(['0','1','2','3','4','5','6']),workday);
 const proInput=z.object({name,photoUrl:cleanUrl.default(''),schedule:scheduleSchema.default(DEFAULT_SCHEDULE),active:z.boolean().default(true)});
 const proPatch=proInput.partial().strict();
-app.get('/api/professionals',auth,wrap(async(req,res)=>{const t=await myTenant(req);res.json(await db.professional.findMany({where:{tenantId:t.id},orderBy:{name:'asc'}}));}));
-app.post('/api/professionals',auth,wrap(async(req,res)=>{const t=await myTenant(req);const v=proInput.parse(req.body);res.status(201).json(await db.professional.create({data:{...v,tenantId:t.id}}));}));
-app.patch('/api/professionals/:id',auth,wrap(async(req,res)=>{
+app.get('/api/professionals',auth,subscriptionGuard,wrap(async(req,res)=>{const t=await myTenant(req);res.json(await db.professional.findMany({where:{tenantId:t.id},orderBy:{name:'asc'}}));}));
+app.post('/api/professionals',auth,subscriptionGuard,wrap(async(req,res)=>{const t=await myTenant(req);const v=proInput.parse(req.body);res.status(201).json(await db.professional.create({data:{...v,tenantId:t.id}}));}));
+app.patch('/api/professionals/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const pro=await db.professional.findFirst({where:{id:String(req.params.id),tenantId:t.id}});
   if(!pro) fail(404,'Profissional não encontrado');
@@ -126,12 +154,12 @@ app.patch('/api/professionals/:id',auth,wrap(async(req,res)=>{
   const v=proInput.parse({...pro,...changes});
   res.json(await db.professional.update({where:{id:pro!.id},data:v}));
 }));
-app.get('/api/bookings',auth,wrap(async(req,res)=>{
+app.get('/api/bookings',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const rows=await db.booking.findMany({where:{tenantId:t.id,startAt:{gte:DateTime.utc().minus({days:30}).toJSDate()}},include:{service:{select:{name:true,priceCents:true}},professional:{select:{name:true}}},orderBy:{startAt:'asc'},take:250});
   res.json(rows);
 }));
-app.patch('/api/bookings/:id',auth,wrap(async(req,res)=>{
+app.patch('/api/bookings/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const b=await db.booking.findFirst({where:{tenantId:t.id,id:String(req.params.id)}});
   if(!b) fail(404,'Reserva não encontrada');
@@ -141,15 +169,18 @@ app.patch('/api/bookings/:id',auth,wrap(async(req,res)=>{
 }));
 
 app.get('/api/public/:slug',wrap(async(req,res)=>{
-  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,primaryColor:true,secondaryColor:true,timezone:true,paymentAccount:{select:{id:true}},services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
+  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,primaryColor:true,secondaryColor:true,timezone:true,businessType:true,trialStartsAt:true,subscriptionEndsAt:true,paymentAccount:{select:{id:true}},services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
   if(!t) fail(404,'Estabelecimento não encontrado');
   const {paymentAccount,...publicData}=t;
-  res.json({...publicData,paymentAvailable:!!paymentAccount&&mpReady()});
+  const state=billingState(t);
+  const {trialStartsAt,subscriptionEndsAt,...safe}=publicData;
+  res.json({...safe,paymentAvailable:!!paymentAccount&&mpReady(),bookingEnabled:state.status==='TRIAL'||state.status==='ACTIVE'});
 }));
 app.get('/api/public/:slug/availability',wrap(async(req,res)=>{
   const params=z.object({serviceId:z.string().uuid(),professionalId:z.string().uuid(),date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(req.query);
   const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)}});
   if(!t) fail(404,'Estabelecimento não encontrado');
+  if(!hasAccess(t)) fail(402,'Este estabelecimento não está recebendo agendamentos no momento.');
   const [s,p]=await Promise.all([
     db.service.findFirst({where:{id:params.serviceId,tenantId:t!.id,active:true}}),
     db.professional.findFirst({where:{id:params.professionalId,tenantId:t!.id,active:true}})
@@ -169,6 +200,7 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
   const p=bookingInput.parse(req.body);
   const tenant=await db.tenant.findUnique({where:{slug:String(req.params.slug)}});
   if(!tenant) fail(404,'Estabelecimento não encontrado');
+  if(!hasAccess(tenant)) fail(402,'Este estabelecimento não está recebendo agendamentos no momento.');
   const [service,prof]=await Promise.all([
     db.service.findFirst({where:{id:p.serviceId,tenantId:tenant!.id,active:true}}),
     db.professional.findFirst({where:{id:p.professionalId,tenantId:tenant!.id,active:true}})
@@ -236,12 +268,53 @@ app.get('/api/booking-status/:id',wrap(async(req,res)=>{
   res.json({...b,status:isExpired?'EXPIRED':b.status,checkoutUrl:isExpired?null:b.checkoutUrl});
 }));
 
-app.get('/api/payments/status',auth,wrap(async(req,res)=>{
+// Assinatura da PLATAFORMA: não utiliza o token OAuth individual do lojista.
+app.get('/api/billing/status',auth,wrap(async(req,res)=>{
+  const t=await myTenant(req);
+  const latest=await db.subscriptionPayment.findFirst({where:{tenantId:t.id},orderBy:{createdAt:'desc'},select:{id:true,status:true,createdAt:true,expiresAt:true}});
+  res.json({...billingState(t),latestPayment:latest});
+}));
+app.post('/api/billing/pix',auth,wrap(async(req,res)=>{
+  const tenant=await myTenant(req);
+  const data=z.object({document:z.string().transform(x=>x.replace(/\D/g,'')).refine(x=>x.length===11||x.length===14,'Informe CPF ou CNPJ válido')}).strict().parse(req.body);
+  if(!tenant.businessType) fail(428,'Atualize o tipo de negócio antes de pagar');
+  if(!env.VEZORA_MP_ACCESS_TOKEN||!env.VEZORA_MP_WEBHOOK_SECRET||!env.API_PUBLIC_URL||env.VEZORA_MONTHLY_PRICE_CENTS<100) fail(503,'Pagamento Pix ou valor da mensalidade ainda não configurado pela Vezora');
+  const user=await db.user.findUnique({where:{id:req.userId}});
+  if(!user) fail(401,'Sessão inválida');
+  // Em caso de rede instável, reutilizar a mesma cobrança pendente (chave idempotente).
+  let invoice=await db.subscriptionPayment.findFirst({where:{tenantId:tenant.id,status:'PENDING',expiresAt:{gt:new Date(Date.now()+60000)}},orderBy:{createdAt:'desc'}});
+  if(!invoice)invoice=await db.subscriptionPayment.create({data:{tenantId:tenant.id,amountCents:env.VEZORA_MONTHLY_PRICE_CENTS,expiresAt:new Date(Date.now()+30*60000)}});
+  if(!invoice.mpPaymentId||!invoice.qrCode){
+    const payment=await generatePix(invoice.id,user.email,invoice.amountCents,data.document);
+    const tx=payment.point_of_interaction?.transaction_data;
+    if(!payment.id||!tx?.qr_code) fail(502,'Mercado Pago não retornou o Pix. Tente novamente.');
+    invoice=await db.subscriptionPayment.update({where:{id:invoice.id},data:{mpPaymentId:String(payment.id),qrCode:tx.qr_code,qrCodeBase64:tx.qr_code_base64||'',ticketUrl:tx.ticket_url||''}});
+  }
+  res.json({invoiceId:invoice.id,amountCents:invoice.amountCents,qrCode:invoice.qrCode,qrCodeBase64:invoice.qrCodeBase64,ticketUrl:invoice.ticketUrl,expiresAt:invoice.expiresAt});
+}));
+app.post('/api/billing/check/:id',auth,wrap(async(req,res)=>{
+  const t=await myTenant(req);
+  const invoice=await db.subscriptionPayment.findFirst({where:{tenantId:t.id,id:String(req.params.id)}});
+  if(!invoice) fail(404,'Cobrança não encontrada');
+  if(invoice.status==='PENDING'&&invoice.mpPaymentId) await reconcileSubscription(invoice.mpPaymentId);
+  const updated=await db.tenant.findUniqueOrThrow({where:{id:t.id}});
+  const updatedInvoice=await db.subscriptionPayment.findUniqueOrThrow({where:{id:invoice.id}});
+  res.json({paymentStatus:updatedInvoice.status,...billingState(updated)});
+}));
+app.post('/api/billing/webhook',wrap(async(req,res)=>{
+  const dataId=String(req.query['data.id']||'');
+  if(!/^\d{1,24}$/.test(dataId)||!verifyBillingWebhook(String(req.headers['x-signature']||''),String(req.headers['x-request-id']||''),dataId))fail(401,'Assinatura inválida');
+  if(req.query.type!=='payment'&&req.body?.type!=='payment')return res.json({received:true});
+  await reconcileSubscription(dataId);
+  res.json({received:true});
+}));
+
+app.get('/api/payments/status',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const a=await db.paymentAccount.findUnique({where:{tenantId:t.id},select:{sellerUserId:true,expiresAt:true,updatedAt:true}});
   res.json({connected:!!a,sellerUserId:a?.sellerUserId,configured:mpReady()});
 }));
-app.post('/api/payments/connect',auth,wrap(async(req,res)=>{
+app.post('/api/payments/connect',auth,subscriptionGuard,wrap(async(req,res)=>{
   if(!mpReady()) fail(503,'Configure a integração Mercado Pago no ambiente da API');
   const t=await myTenant(req);
   const state=rand(32),verifier=rand(48);
@@ -262,7 +335,7 @@ app.get('/api/payments/callback',wrap(async(req,res)=>{
     res.redirect(`${env.WEB_URL}/painel?mp=connected`);
   }catch(e){console.error('OAuth callback failed',e);res.redirect(`${env.WEB_URL}/painel?mp=error`);}
 }));
-app.delete('/api/payments/connect',auth,wrap(async(req,res)=>{
+app.delete('/api/payments/connect',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   // Não descartar a credencial enquanto uma transação recente pode
   // precisar de confirmação automática ou de conciliação manual.

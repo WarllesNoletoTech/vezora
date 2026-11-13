@@ -184,3 +184,127 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(max-width:780px){input:not([type=checkbox]):not([type=color]),textarea,select{font-size:16px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 @media(max-width:780px){.auth-aside h1 br{display:initial}}
+
+/* ===== Vezora 0.5: identidade global neutra + visual exclusivo por negócio ===== */
+.site{--primary:#286984;--primary-dark:#1D516B;--plum:#172737;--ink:#182734;--rose:#EAF5F8;--brand-ink:#172737}
+.site .hero h1 em,.site .split-inner h2 em,.site .section-heading h2 em{color:#286984}
+.site .eyebrow{color:#215B78;background:#EAF3F7}
+.site .hero-visual .mock-hero{background:linear-gradient(145deg,#142F42,#37647C)}
+.site .mock-icon{color:#286984;background:#EDF5F8}
+.site .mock-cta{background:#286984}
+.site .orb-one{background:#DDECF1}
+.site .orb-two{background:#E5E9DC}
+.site .floating-icon{background:#E3F4EB;color:#1C7954}
+.site .feature-icon{background:#ECF5F7;color:#2A697D}
+.site .trust-strip{background:#F3F7F9}
+.site .theme-canvas{background:linear-gradient(140deg,#17364B,#2A657D)}
+.site .theme-button{background:#E2B66A;color:#233849}
+.site .launch-card{background:linear-gradient(120deg,#172B3D,#355A70)}
+.auth-neutral .auth-aside,.auth-shell .auth-aside{background:linear-gradient(140deg,#152737,#203E53 67%,#31566B)}
+.auth-shell .auth-aside h1 em,.auth-shell .auth-aside .overline{color:#E9C58F}
+.auth-shell .auth-aside p{color:#D5E4ED}
+.auth-shell{--primary:#286984;--primary-dark:#1C5169}
+.auth-trial-note{display:flex;gap:10px;align-items:center;padding:12px 14px;border:1px solid #ffffff3d;border-radius:12px;font-size:12px;margin-top:22px;background:#ffffff11;max-width:400px}
+.business-type-preview{display:flex;align-items:center;gap:14px;border:1px solid color-mix(in srgb,var(--business-primary),white 72%);background:color-mix(in srgb,var(--business-primary),white 94%);padding:14px;border-radius:14px;min-width:0}
+.business-type-preview>b,.business-type-preview span>b{display:block;font-size:13px;color:#22313C}
+.business-type-preview span{min-width:0}
+.business-type-preview span small{display:block;color:#66717A;font-size:11px;line-height:1.6;margin-top:4px}
+.business-motif{position:relative;overflow:hidden;isolation:isolate;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;flex-shrink:0;border-radius:14px;width:68px;height:68px;background:linear-gradient(135deg,var(--business-secondary,var(--tenant-secondary,#243445)),var(--business-primary,var(--tenant-primary,#416982)));color:#fff}
+.business-motif>svg{position:relative;z-index:2;width:27px;height:27px}
+.business-motif>small{position:relative;z-index:2;font-size:7px;color:#FFF9;text-transform:uppercase;text-align:center;line-height:1.1;max-width:90%}
+.business-motif-orbit{position:absolute;z-index:1;width:110%;height:110%;border:1px solid #ffffff20;transform:rotate(-26deg);border-radius:40%;top:-26%;right:-30%}
+.business-motif-orbit.orbit-small{width:80%;height:80%;left:-35%;top:45%}
+.business-motif-large{width:210px;height:200px;border:1px solid #ffffff42;box-shadow:0 12px 45px #0002;border-radius:28px;background:linear-gradient(125deg,#ffffff26,#ffffff0a)}
+.business-motif-large>svg{width:86px;height:86px;stroke-width:1.3}
+.business-motif-large>small{font-size:11px;letter-spacing:.13em;font-weight:700}
+.dashboard-shell{--primary:var(--dash-primary);--primary-dark:var(--dash-primary)}
+.dashboard-shell .dash-sidebar{background:var(--dash-secondary)}
+.dashboard-shell .sidebar-business{background:#ffffff12;border-color:#ffffff21}
+.dashboard-shell .sidebar-nav button.selected{background:color-mix(in srgb,var(--dash-primary),white 13%);color:white}
+.dashboard-shell .sidebar-nav button:not(.selected):hover{background:#ffffff18}
+.dashboard-shell .welcome-panel{background:linear-gradient(115deg,var(--dash-secondary) 12%,var(--dash-primary) 120%)}
+.dashboard-shell .welcome-decoration{right:30px;top:7px;font-size:unset;line-height:normal}
+.dashboard-shell .welcome-decoration .business-motif{transform:rotate(-8deg)}
+.dashboard-shell .business-avatar{background:transparent!important}
+.dashboard-shell .business-avatar .business-motif{width:40px;height:40px;border-radius:10px}
+.dashboard-shell .business-avatar .business-motif svg{width:20px;height:20px}
+.dashboard-shell .business-avatar .business-motif small{display:none}
+.dashboard-shell .welcome-panel p{color:#F4EFF2}
+.dashboard-shell .text-action,.dashboard-shell .item-icon,.dashboard-shell .btn-plain{color:var(--dash-primary)}
+.dashboard-shell .preview-cover{background:linear-gradient(125deg,var(--tenant-secondary),var(--tenant-primary))}
+.dashboard-shell .preview-logo .business-motif{width:58px;height:58px;border-radius:50%}
+.dashboard-shell .preview-logo .business-motif svg{width:27px;height:27px}
+.dashboard-shell .preview-logo .business-motif small{display:none}
+.preview-category{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--tenant-primary)}
+.trial-banner{display:flex;align-items:center;gap:11px;background:#EDF7FA;border:1px solid #CAE0E9;color:#28526C;border-radius:13px;padding:13px 15px;font-size:12px;font-weight:650;margin-bottom:20px;line-height:1.5}
+.subtle-note{font-size:11px;color:#66727D;line-height:1.5;margin:-7px 0 2px}
+.public-site{--business-primary:var(--tenant-primary);--business-secondary:var(--tenant-secondary)}
+.public-hero{background:linear-gradient(127deg,var(--tenant-secondary),var(--tenant-primary));position:relative;overflow:hidden}
+.public-hero-inner{position:relative;max-width:1040px;min-height:310px;display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,245px);align-items:center;text-align:left;gap:14px;padding:35px 24px 38px}
+.public-brand-hero{display:flex;align-items:flex-start;gap:20px;position:relative;z-index:2}
+.public-title h1{margin:0 0 8px;font-size:clamp(29px,3.3vw,43px);line-height:1.14;letter-spacing:-.045em}
+.public-title h2{font-size:clamp(19px,2vw,25px);line-height:1.25;margin:0 0 10px;font-weight:650;color:#fff}
+.public-title p{margin:0 0 14px;font-size:13px;line-height:1.6;max-width:510px;color:#ffffffd9}
+.public-eyebrow{display:block;font-size:10px;margin-bottom:10px;letter-spacing:.12em}
+.public-brand-hero .public-logo{width:65px;height:65px;border-radius:15px;margin:0;background:#fff2;flex-shrink:0}
+.public-brand-hero .public-logo .business-motif{width:65px;height:65px;border-radius:15px}
+.public-brand-hero .public-logo .business-motif small{display:none}
+.public-hero-motif{justify-self:center;position:relative;z-index:1;opacity:.94}
+.public-contact{grid-column:1/-1;justify-content:flex-start;text-align:left;gap:16px}
+.public-stepper .on span{background:var(--tenant-primary)}
+.public-site .business-motif{--business-primary:var(--tenant-primary);--business-secondary:var(--tenant-secondary)}
+.public-site .service-option-icon{display:grid;place-items:center;background:transparent}
+.public-site .service-option-icon .business-motif{width:40px;height:40px;border-radius:10px}
+.public-site .service-option-icon .business-motif svg{width:20px;height:20px}
+.public-site .service-option-icon .business-motif small{display:none}
+.public-site .public-btn{background:var(--tenant-primary)}
+.public-site[data-business="BARBEARIA"] .public-hero{background:repeating-linear-gradient(132deg,#ffffff08 0px,#ffffff08 2px,transparent 2px,transparent 22px),linear-gradient(125deg,#141A1F,#6B4A2E)}
+.public-site[data-business="BARBEARIA"] .booking-panel,.public-site[data-business="BARBEARIA"] .booking-service-option{border-radius:8px}
+.public-site[data-business="BARBEARIA"] .public-btn{border-radius:8px}
+.public-site[data-business="CABELEIREIRO"] .public-hero{background:radial-gradient(circle at 80% 10%,#fff2,transparent 34%),linear-gradient(125deg,#241C18,#8B5B40)}
+.public-site[data-business="LASH_DESIGNER"] .public-hero{background:radial-gradient(ellipse at right,#A68AC6,transparent 55%),linear-gradient(120deg,#2E2242,#7A5AA4)}
+.public-site[data-business="NAIL_DESIGNER"] .public-hero{background:radial-gradient(circle at 75% 15%,#ffffff21,transparent 45%),linear-gradient(130deg,#401C32,#A75080)}
+.public-site[data-business="SOBRANCELHAS"] .public-hero{background:linear-gradient(125deg,#302014,#92694C)}
+.public-site[data-business="ESTETICA"] .public-hero{background:linear-gradient(125deg,#122D2B,#4F8D80)}
+.public-site[data-business="MASSOTERAPIA"] .public-hero{background:linear-gradient(125deg,#1B333A,#4A8382)}
+.completion-page,.subscription-page{min-height:100dvh;display:grid;place-items:center;padding:30px 16px;background:radial-gradient(circle at 6% 10%,#DCECF3,transparent 34%),#F5F8FA;color:#1B2C39}
+.completion-card,.subscription-card{width:min(550px,100%);background:white;border:1px solid #E3EBF0;border-radius:22px;box-shadow:0 20px 65px #1A324018;padding:clamp(24px,4vw,40px);display:grid;gap:15px}
+.completion-card .brand,.subscription-card .brand{justify-self:start}
+.completion-card h1,.subscription-card h1{font-size:clamp(24px,4vw,30px);line-height:1.2;margin:7px 0 0}
+.completion-card>p,.subscription-card>p{font-size:13px;color:#657481;line-height:1.65;margin:0 0 10px}
+.completion-step{font-size:10px;letter-spacing:.15em;font-weight:800;color:#2B6E8A;background:#EAF4F7;border-radius:99px;padding:7px 11px;justify-self:start;margin-top:7px}
+.completion-page .btn-primary,.subscription-page .btn-primary{background:#286984}
+.signup-trial{display:flex;align-items:flex-start;gap:9px;background:#ECF7F5;color:#24695F;padding:12px;border-radius:11px;font-size:11px;font-weight:650;line-height:1.5}
+.signup-trial svg{flex-shrink:0}
+.subscription-icon{width:58px;height:58px;border-radius:16px;background:#E7F1F5;color:#2D6984;display:grid;place-items:center;margin-top:9px}
+.subscription-price{background:#F4F8FA;border:1px solid #DEE9EE;padding:19px;border-radius:14px;display:grid;gap:6px}
+.subscription-price span{font-size:13px;color:#637481}
+.subscription-price strong{font-size:34px;letter-spacing:-.04em;color:#1E465D}
+.subscription-price small{font-size:10px;color:#617586;line-height:1.5}
+.pix-box{display:grid;gap:12px;text-align:center}
+.pix-box> b{font-size:13px}
+.pix-box .pix-qr{width:230px;height:230px;max-width:100%;margin:0 auto;border-radius:12px}
+.pix-box label{text-align:left}
+.pix-box textarea{font-size:11px;font-family:monospace;word-break:break-all}
+.pix-box small{font-size:11px;color:#647784;line-height:1.5}
+.subscription-footer{justify-self:center;font-size:12px;color:#527587;text-decoration:underline}
+@media(max-width:780px){
+ .public-hero-inner{padding:25px 18px;grid-template-columns:1fr;gap:5px;text-align:center;justify-items:center}
+ .public-brand-hero{flex-direction:column;align-items:center;gap:13px}
+ .public-hero-motif{display:none}
+ .public-contact{justify-content:center;text-align:center;gap:10px}
+ .public-title h1{font-size:clamp(29px,6vw,39px)}
+ .dashboard-shell .welcome-decoration{display:none}
+ .auth-trial-note{max-width:100%}
+}
+@media(max-width:480px){
+ .business-type-preview{gap:10px;padding:10px}
+ .business-type-preview .business-motif{width:58px;height:58px}
+ .business-type-preview .business-motif svg{width:23px;height:23px}
+ .business-type-preview span small{font-size:10px}
+ .public-brand-hero .public-logo{width:56px;height:56px}
+ .public-brand-hero .public-logo .business-motif{width:56px;height:56px}
+ .public-contact{font-size:11px}
+ .trial-banner{align-items:flex-start;font-size:11px;padding:11px}
+ .completion-card,.subscription-card{border-radius:17px;padding:23px 18px}
+}

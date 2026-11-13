@@ -50,3 +50,6 @@ JWT_SECRET, TOKEN_ENCRYPTION_KEY nem dados do Mercado Pago na Vercel.
 
 ## Novidades da v0.3
 Nova marca Vezora (`public/`), navegação mobile, melhorias de responsividade nas telas de cadastro, painel e reservas, mensagens de erro e SEO/manifest. Consulte `README_DEPLOY.md`.
+
+## Atualização v0.5
+Consulte `GUIA_ATUALIZACAO_V05.md` para personalização por segmento e assinatura Pix.

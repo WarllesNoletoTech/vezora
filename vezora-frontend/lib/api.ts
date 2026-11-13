@@ -13,13 +13,14 @@ export function niceDate(date:string,timeZone='America/Sao_Paulo'){return new Da
 export function whatsappUrl(phone:string,msg:string){const digits=phone.replace(/\D/g,'');const p=digits.startsWith('55') && (digits.length===12 || digits.length===13)?digits:`55${digits}`;return `https://wa.me/${p}?text=${encodeURIComponent(msg)}`;}
 export type Service={id:string;name:string;description:string;priceCents:number;durationMin:number;depositMode:'NONE'|'PERCENT'|'FIXED';depositValue:number;active:boolean};
 export type Professional={id:string;name:string;photoUrl:string;active:boolean;schedule:Record<string,[string,string]|null>};
-export type Tenant={id:string;name:string;slug:string;bio:string;whatsapp:string;instagram:string;address:string;logoUrl:string;coverUrl:string;primaryColor:string;secondaryColor:string;timezone:string};
+import type {BusinessType} from '@/lib/business';
+export type Tenant={businessType:BusinessType|null;id:string;name:string;slug:string;bio:string;whatsapp:string;instagram:string;address:string;logoUrl:string;coverUrl:string;primaryColor:string;secondaryColor:string;timezone:string};
 export type Booking={id:string;clientName:string;clientPhone:string;startAt:string;endAt:string;status:string;depositCents:number;paymentStatus:string|null;service:{name:string;priceCents:number};professional:{name:string}};
 
 /** Envia somente os campos editáveis; chaves internas do MongoDB são imutáveis. */
 export function editableTenant(t: Tenant) {
   return {
-    name: t.name, bio: t.bio, whatsapp: t.whatsapp, instagram: t.instagram,
+    businessType: t.businessType, name: t.name, bio: t.bio, whatsapp: t.whatsapp, instagram: t.instagram,
     address: t.address, logoUrl: t.logoUrl, coverUrl: t.coverUrl,
     primaryColor: t.primaryColor, secondaryColor: t.secondaryColor, timezone: t.timezone
   };
