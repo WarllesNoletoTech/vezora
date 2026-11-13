@@ -11,6 +11,9 @@ type Billing={status:string;trialEndsAt:string|null;subscriptionEndsAt:string|nu
 type Pix={invoiceId:string;amountCents:number;qrCode:string;qrCodeBase64:string;ticketUrl:string;expiresAt:string};
 type Card={configured:boolean;status:string;checkoutUrl:string|null;amountCents:number|null;preapprovalId:string|null};
 const date=(value:string|null)=>value?new Date(value).toLocaleDateString('pt-BR'):'—';
+// O Mercado Pago exige o atributo HTML `view=checkout` no security.js.
+// O Next.js Script renderiza atributos extras, mas não declara `view` em ScriptProps.
+const mercadoPagoSecurityAttributes = { view: 'checkout' } as const;
 export default function Subscription(){
  const router=useRouter();
  const [document,D]=useState(''),[state,S]=useState<Billing|null>(null),[invoice,I]=useState<Pix|null>(null);
@@ -39,7 +42,7 @@ export default function Subscription(){
  async function cancelCard(){if(!window.confirm('Cancelar a renovação automática no cartão? Um período já pago continuará válido até seu vencimento.'))return;B(true);E('');try{await api('/billing/card/cancel',{method:'POST'});await refreshCard();N('Renovação automática cancelada.');}catch(e){E((e as Error).message)}finally{B(false)}}
  if(loading)return <div className="screen-loading"><span className="spinner"/><p>Verificando assinatura do Vezora...</p></div>;
  const active=state?.status==='ACTIVE';const trial=state?.status==='TRIAL';const suspended=state?.status==='SUSPENDED';
- return <main className="subscription-page"><Script src="https://www.mercadopago.com/v2/security.js" strategy="afterInteractive" view="checkout"/><section className="subscription-card subscription-card-wide">
+ return <main className="subscription-page"><Script src="https://www.mercadopago.com/v2/security.js" strategy="afterInteractive" {...mercadoPagoSecurityAttributes}/><section className="subscription-card subscription-card-wide">
   <div className="subscription-top"><Brand/><Link href="/painel" className="subscription-back"><ArrowLeft size={15}/> Voltar ao painel</Link></div>
   <div className="subscription-icon"><LockKeyhole size={26}/></div>
   <h1>Minha assinatura Vezora</h1>
