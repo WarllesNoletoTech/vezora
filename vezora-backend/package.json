@@ -1,6 +1,6 @@
 {
   "name": "vezora-backend",
-  "version": "0.9.0",
+  "version": "0.9.2",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -13,7 +13,8 @@
     "admin:promote": "node scripts/promote-admin.cjs",
     "db:push": "prisma db push",
     "heroku-postbuild": "npm run build",
-    "db:backfill-v07": "node scripts/backfill-v07.cjs"
+    "db:backfill-v07": "node scripts/backfill-v07.cjs",
+    "db:backfill-finance": "node scripts/backfill-admin-finance.cjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",

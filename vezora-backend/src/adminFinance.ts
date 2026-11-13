@@ -19,6 +19,7 @@ const paramsSchema=z.object({
 const MAX_BOOKINGS=12000;
 const MAX_TENANTS=1000;
 const MAX_PAYMENTS=50000;
+const MAX_PROFESSIONALS=20000;
 const empty=()=>({
   completed:0,confirmed:0,cancelled:0,pending:0,other:0,
   completedRevenueCents:0,collectedCents:0,depositsCents:0,manualCents:0,
@@ -52,19 +53,31 @@ export async function createAdminFinanceReport(query:unknown){
  if(tenants.length>MAX_TENANTS)fail(422,'Há mais de 1.000 estabelecimentos. Divida a consulta por estabelecimento.');
  if(p.tenantId&&!tenants.length)fail(404,'Estabelecimento não encontrado.');
  const scope:Prisma.BookingWhereInput={startAt:timeRange,...(p.tenantId?{tenantId:p.tenantId}:{})};
- const [bookings,subscriptions,staff]=await Promise.all([
+ const [bookings,subscriptions,staffRaw]=await Promise.all([
   db.booking.findMany({where:scope,take:MAX_BOOKINGS+1,orderBy:{startAt:'desc'},
-   select:{tenantId:true,status:true,servicePriceCents:true,commissionCents:true,paymentStatus:true,depositCents:true,
-    service:{select:{priceCents:true}},professional:{select:{commissionMode:true,commissionValue:true}},
+   select:{tenantId:true,status:true,professionalId:true,servicePriceCents:true,commissionCents:true,paymentStatus:true,depositCents:true,
+    service:{select:{priceCents:true}},
     receipts:{where:{voidedAt:null},select:{amountCents:true}}}}),
   db.subscriptionPayment.findMany({where:{status:'PAID',paidAt:timeRange,...(p.tenantId?{tenantId:p.tenantId}:{})},
    select:{tenantId:true,amountCents:true},take:MAX_PAYMENTS+1}),
-  db.professional.findMany({where:{active:true,...(p.tenantId?{tenantId:p.tenantId}:{})},select:{tenantId:true,salaryEnabled:true,salaryCents:true}})
+  // aggregateRaw tolera documentos legados sem salario/comissao que foram criados antes da v0.7.
+  // Nao alterar historico no GET: a recuperacao dos campos e somente leitura.
+  db.professional.aggregateRaw({pipeline:[
+   {$match:p.tenantId?{tenantId:p.tenantId}:{}},
+   {$project:{_id:1,tenantId:1,active:1,salaryEnabled:1,salaryCents:1,commissionMode:1,commissionValue:1}},
+   {$limit:MAX_PROFESSIONALS+1}
+  ]})
  ]);
  if(bookings.length>MAX_BOOKINGS)fail(422,`O período tem mais de ${MAX_BOOKINGS.toLocaleString('pt-BR')} agendamentos. Reduza o período ou selecione um estabelecimento.`);
  if(subscriptions.length>MAX_PAYMENTS)fail(422,'Há mais de 50.000 pagamentos no período. Reduza o intervalo.');
+ // Os resultados de aggregateRaw sao documentos Mongo e podem omitir campos antigos.
+ type LegacyProfessional={_id?:string;tenantId?:string;active?:boolean;salaryEnabled?:boolean;salaryCents?:number;commissionMode?:string;commissionValue?:number};
+ const staff=Array.isArray(staffRaw)?staffRaw as LegacyProfessional[]:[];
+ if(staff.length>MAX_PROFESSIONALS)fail(422,'Numero de profissionais acima do limite. Filtre por estabelecimento.');
+ const professionals=new Map(staff.filter(s=>typeof s._id==='string').map(s=>[s._id!,s]));
+ const validCents=(x:unknown)=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=0?x:0;
  const map=new Map(tenants.map(t=>[t.id,empty()]));
- for(const s of staff){const t=map.get(s.tenantId);if(t&&s.salaryEnabled)t.monthlySalariesCents+=s.salaryCents;}
+ for(const s of staff){const t=s.tenantId?map.get(s.tenantId):undefined;if(t&&s.active!==false&&s.salaryEnabled===true)t.monthlySalariesCents+=validCents(s.salaryCents);}
  for(const b of bookings){
   const t=map.get(b.tenantId);if(!t)continue;
   if(b.status==='CANCELLED'){t.cancelled++;continue;}
@@ -73,7 +86,10 @@ export async function createAdminFinanceReport(query:unknown){
   if(b.status!=='COMPLETED'){t.other++;continue;}
   t.completed++;
   const price=b.servicePriceCents??b.service.priceCents;
-  const commission=b.commissionCents??commissionFor(price,b.professional.commissionMode,b.professional.commissionValue);
+  const pro=professionals.get(b.professionalId);
+  const mode=pro?.commissionMode==='PERCENT'||pro?.commissionMode==='FIXED'?pro.commissionMode:'NONE';
+  const rate=validCents(pro?.commissionValue);
+  const commission=b.commissionCents??commissionFor(price,mode,mode==='PERCENT'?Math.min(100,rate):rate);
   if(b.servicePriceCents===null)t.legacyPriceCount++;
   if(b.commissionCents===null)t.legacyCommissionCount++;
   const deposit=b.paymentStatus==='approved'?b.depositCents:0;

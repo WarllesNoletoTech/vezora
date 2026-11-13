@@ -56,6 +56,7 @@ export default function AdminPage(){
  const [finTenant,FTENANT]=useState(''),[finance,FIN]=useState<FinanceReport|null>(null);
  const [tenantOptions,TENANTOPTS]=useState<FinanceTenant[]>([]);
  const [financialPreview,FPREVIEW]=useState<FinanceReport|null>(null);
+ const [financePreviewError,FPERROR]=useState(false);
 
  useEffect(()=>{
   let active=true;
@@ -76,7 +77,7 @@ export default function AdminPage(){
      const data=await api<Summary>('/admin/summary');
      if(!data||typeof data.totalTenants!=='number')throw new Error('Resposta inválida da API administrativa. Confira se o backend também está atualizado.');
      S({...data,statusCounts:data.statusCounts||{},types:data.types||{},latestPayments:Array.isArray(data.latestPayments)?data.latestPayments:[]});
-     void api<FinanceReport>(`/admin/finance/summary?from=${monthStart()}&to=${today()}`).then(x=>FPREVIEW(x&&Array.isArray(x.items)?x:null)).catch(()=>FPREVIEW(null));
+     void api<FinanceReport>(`/admin/finance/summary?from=${monthStart()}&to=${today()}`).then(x=>{FPERROR(false);FPREVIEW(x&&Array.isArray(x.items)?x:null)}).catch(()=>{FPERROR(true);FPREVIEW(null)});
    }
    if(tab==='finance'){const next=await api<FinanceReport>(`/admin/finance/summary?from=${finFrom}&to=${finTo}${finTenant?'&tenantId='+encodeURIComponent(finTenant):''}`);if(!next||!Array.isArray(next.items))throw new Error('Relatório financeiro retornou formato inválido. Verifique a versão do backend.');FIN(next);if(!finTenant)TENANTOPTS(next.items);}
    if(tab==='settings'){const x=await api<Settings>('/admin/settings');SET(x);PRICE((x.monthlyPriceCents/100).toFixed(2).replace('.',','));TRIALDAYS(String(x.trialDays??3));}
@@ -139,6 +140,7 @@ export default function AdminPage(){
     {error&&<div className="alert error" role="alert"><AlertTriangle size={18}/>{error}<button onClick={()=>E('')} aria-label="Fechar"><X size={15}/></button></div>}
     {notice&&<div className="alert success" role="status"><Check size={17}/>{notice}<button onClick={()=>MSG('')} aria-label="Fechar"><X size={15}/></button></div>}
     {tab==='overview'&&<>
+      {financePreviewError&&<div className="alert error" role="status"><AlertTriangle size={18}/>Relatorio financeiro temporariamente indisponivel. Os demais dados administrativos continuam acessiveis. Consulte os logs do Heroku ou execute a migracao dos registros antigos.<button onClick={()=>{FPERROR(false);void load()}}>Tentar novamente</button></div>}
       <div className="ad-heading"><div><h2>Seu Vezora em números</h2><p>Indicadores reais dos estabelecimentos e dos pagamentos registrados.</p></div><button className="ad-action" onClick={()=>selectTab('settings')}><Settings2 size={17}/> Configurar mensalidade</button></div>
       <div className="ad-stat-grid">
        <Stat label="Estabelecimentos" value={summary?.totalTenants?.toLocaleString('pt-BR')||'—'} icon={<Store/>} hint={`${summary?.newTenants30||0} novos nos últimos 30 dias`}/>
