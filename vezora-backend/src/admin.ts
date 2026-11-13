@@ -7,6 +7,7 @@ import {accessPeriod} from './trial';
 import {env} from './env';
 import {phoneDigits} from './core';
 import {adminFinanceRouter} from './adminFinance';
+import {loadOwnerMap,ownerPreview} from './ownerLookup';
 
 export type AdminRequest=Request & {userId?:string};
 const router=Router();
@@ -71,8 +72,9 @@ function sendCsv(res:Response,name:string,columns:string[],rows:unknown[][]){
   res.send(body);
 }
 router.get('/export/tenants',run(async(_req,res)=>{
-  const records=await db.tenant.findMany({take:5000,orderBy:{createdAt:'desc'},select:{name:true,slug:true,businessType:true,createdAt:true,subscriptionEndsAt:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,suspendedAt:true,owner:{select:{name:true,email:true,phone:true}}}});
-  sendCsv(res,'vezora-estabelecimentos.csv',['Estabelecimento','Slug','Segmento','Lojista','Email','WhatsApp','Criado em','Status','Vencimento assinatura'],records.map(t=>[t.name,t.slug,t.businessType||'',t.owner.name,t.owner.email,t.owner.phone||'',t.createdAt.toISOString(),accessPeriod(t).status,t.subscriptionEndsAt?.toISOString()||'']));
+  const records=await db.tenant.findMany({take:5000,orderBy:{createdAt:'desc'},select:{ownerId:true,name:true,slug:true,businessType:true,createdAt:true,subscriptionEndsAt:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,suspendedAt:true}});
+  const owners=await loadOwnerMap(records);
+  sendCsv(res,'vezora-estabelecimentos.csv',['Estabelecimento','Slug','Segmento','Lojista','Email','WhatsApp','Criado em','Status','Vencimento assinatura','Vínculo do proprietário'],records.map(t=>{const owner=ownerPreview(t.ownerId,owners);return [t.name,t.slug,t.businessType||'',owner.name,owner.email,owner.phone||'',t.createdAt.toISOString(),accessPeriod(t).status,t.subscriptionEndsAt?.toISOString()||'',owner.ownerMissing?'PENDENTE DE CONFERÊNCIA':'OK'];}));
 }));
 router.get('/export/payments',run(async(_req,res)=>{
   const records=await db.subscriptionPayment.findMany({
@@ -80,10 +82,11 @@ router.get('/export/payments',run(async(_req,res)=>{
     orderBy:{createdAt:'desc'},
     select:{
       id:true,status:true,paymentMethod:true,amountCents:true,createdAt:true,paidAt:true,
-      tenant:{select:{name:true,owner:{select:{email:true}}}}
+      tenant:{select:{name:true,ownerId:true}}
     }
   });
-  sendCsv(res,'vezora-cobrancas.csv',['ID','Estabelecimento','Email','Metodo','Valor (R$)','Status','Emissao','Pagamento'],records.map(p=>[p.id,p.tenant.name,p.tenant.owner.email,p.paymentMethod,(p.amountCents/100).toFixed(2).replace('.',','),p.status,p.createdAt.toISOString(),p.paidAt?.toISOString()||'']));
+  const owners=await loadOwnerMap(records.map(p=>p.tenant));
+  sendCsv(res,'vezora-cobrancas.csv',['ID','Estabelecimento','Email','Metodo','Valor (R$)','Status','Emissao','Pagamento'],records.map(p=>[p.id,p.tenant.name,ownerPreview(p.tenant.ownerId,owners).email,p.paymentMethod,(p.amountCents/100).toFixed(2).replace('.',','),p.status,p.createdAt.toISOString(),p.paidAt?.toISOString()||'']));
 }));
 
 router.get('/tenants',run(async(req,res)=>{
@@ -98,21 +101,23 @@ router.get('/tenants',run(async(req,res)=>{
   const [total,items]=await Promise.all([
     db.tenant.count({where}),
     db.tenant.findMany({where,take:perPage,skip:(input.page-1)*perPage,orderBy:{createdAt:'desc'},
-      select:{...summaryTenantSelect,name:true,slug:true,subscriptionEndsAt:true,suspensionReason:true,
-        owner:{select:{id:true,name:true,email:true,phone:true}},_count:{select:{services:true,professionals:true,bookings:true}}}})
+      select:{...summaryTenantSelect,ownerId:true,name:true,slug:true,subscriptionEndsAt:true,suspensionReason:true,
+        _count:{select:{services:true,professionals:true,bookings:true}}}})
   ]);
-  res.json({items:items.map(t=>({...t,whatsapp:t.owner.phone||'',billingStatus:accessPeriod(t).status})),page:input.page,pageSize:perPage,total});
+  const owners=await loadOwnerMap(items);
+  res.json({items:items.map(t=>{const owner=ownerPreview(t.ownerId,owners);return {...t,owner,ownerMissing:owner.ownerMissing,whatsapp:owner.phone||'',billingStatus:accessPeriod(t).status};}),page:input.page,pageSize:perPage,total});
 }));
 router.get('/tenants/:id',run(async(req,res)=>{
   const t=await db.tenant.findUnique({where:{id:String(req.params.id)},select:{
-    ...summaryTenantSelect,name:true,slug:true,suspensionReason:true,
-    owner:{select:{id:true,name:true,email:true,phone:true,createdAt:true}},
+    ...summaryTenantSelect,ownerId:true,name:true,slug:true,suspensionReason:true,
     subscriptionPayments:{take:15,orderBy:{createdAt:'desc'},select:{id:true,amountCents:true,status:true,paidAt:true,createdAt:true,expiresAt:true}},
     _count:{select:{services:true,professionals:true,bookings:true}},
     paymentAccount:{select:{sellerUserId:true,createdAt:true}}
   }});
   if(!t)fail(404,'Estabelecimento não encontrado');
-  res.json({...t,whatsapp:t.owner.phone||'',billingStatus:accessPeriod(t).status});
+  const owners=await loadOwnerMap([t]);
+  const owner=ownerPreview(t.ownerId,owners);
+  res.json({...t,owner,ownerMissing:owner.ownerMissing,whatsapp:owner.phone||'',billingStatus:accessPeriod(t).status});
 }));
 router.patch('/tenants/:id/suspension',run(async(req,res)=>{
   const {suspended,reason:why}=z.object({suspended:z.boolean(),reason:z.string().trim().max(240).default('')}).strict().parse(req.body);
@@ -162,8 +167,9 @@ router.patch('/users/:id/phone',run(async(req,res)=>{
 router.get('/payments',run(async(req,res)=>{
   const {page,status}=z.object({page:paging,status:z.enum(['TODOS','PENDING','PAID','EXPIRED','CANCELLED']).default('TODOS')}).parse(req.query);
   const where:Prisma.SubscriptionPaymentWhereInput=status==='TODOS'?{}:{status};
-  const [total,items]=await Promise.all([db.subscriptionPayment.count({where}),db.subscriptionPayment.findMany({where,take:perPage,skip:(page-1)*perPage,orderBy:{createdAt:'desc'},select:{id:true,status:true,paymentMethod:true,amountCents:true,createdAt:true,paidAt:true,expiresAt:true,tenant:{select:{id:true,name:true,slug:true,owner:{select:{name:true,email:true}}}}}})]);
-  res.json({total,page,pageSize:perPage,items});
+  const [total,items]=await Promise.all([db.subscriptionPayment.count({where}),db.subscriptionPayment.findMany({where,take:perPage,skip:(page-1)*perPage,orderBy:{createdAt:'desc'},select:{id:true,status:true,paymentMethod:true,amountCents:true,createdAt:true,paidAt:true,expiresAt:true,tenant:{select:{id:true,name:true,slug:true,ownerId:true}}}})]);
+  const owners=await loadOwnerMap(items.map(p=>p.tenant));
+  res.json({total,page,pageSize:perPage,items:items.map(p=>({...p,tenant:{...p.tenant,owner:ownerPreview(p.tenant.ownerId,owners)}}))});
 }));
 router.get('/audit',run(async(req,res)=>{
   const {page}=z.object({page:paging}).parse(req.query);

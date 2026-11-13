@@ -6,6 +6,7 @@ import type {Prisma} from '@prisma/client';
 import {db} from './db';
 import {commissionFor} from './finance';
 import {renderAdminFinancePdf} from './adminFinancePdf';
+import {loadOwnerMap,ownerPreview} from './ownerLookup';
 
 export const adminFinanceRouter=Router();
 const run=(fn:(req:Request,res:Response)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>Promise.resolve(fn(req,res)).catch(next);
@@ -48,7 +49,7 @@ export async function createAdminFinanceReport(query:unknown){
  const tenants=await db.tenant.findMany({
   where:p.tenantId?{id:p.tenantId}:{},take:MAX_TENANTS+1,orderBy:{name:'asc'},
   select:{id:true,name:true,slug:true,businessType:true,createdAt:true,
-   owner:{select:{name:true,email:true,phone:true}},paymentAccount:{select:{id:true}}}
+   ownerId:true,paymentAccount:{select:{id:true}}}
  });
  if(tenants.length>MAX_TENANTS)fail(422,'Há mais de 1.000 estabelecimentos. Divida a consulta por estabelecimento.');
  if(p.tenantId&&!tenants.length)fail(404,'Estabelecimento não encontrado.');
@@ -98,7 +99,8 @@ export async function createAdminFinanceReport(query:unknown){
   t.collectedCents+=deposit+manual;t.outstandingCents+=Math.max(0,price-deposit-manual);t.commissionsCents+=commission;
  }
  for(const s of subscriptions){const t=map.get(s.tenantId);if(t){t.subscriptionReceivedCents+=s.amountCents;t.subscriptionPaymentCount++;}}
- const items=tenants.map(t=>({...t,hasMercadoPago:Boolean(t.paymentAccount),paymentAccount:undefined,...map.get(t.id)!})).sort((a,b)=>b.completedRevenueCents-a.completedRevenueCents);
+ const owners=await loadOwnerMap(tenants);
+ const items=tenants.map(t=>{const owner=ownerPreview(t.ownerId,owners);return {...t,owner,ownerMissing:owner.ownerMissing,hasMercadoPago:Boolean(t.paymentAccount),paymentAccount:undefined,...map.get(t.id)!};}).sort((a,b)=>b.completedRevenueCents-a.completedRevenueCents);
  const totals=rollup([...map.values()]);
  return {period:p,timezone:ZONE,generatedAt:new Date().toISOString(),totals,items,
   definitions:{completedRevenue:'Valor dos serviços concluídos no período, pela data do atendimento',
