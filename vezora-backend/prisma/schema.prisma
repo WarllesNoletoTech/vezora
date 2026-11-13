@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid()) @map("_id")
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  tenant       Tenant?
+}
+
+model Tenant {
+  id             String         @id @default(uuid()) @map("_id")
+  ownerId        String         @unique
+  owner          User           @relation(fields: [ownerId], references: [id])
+  name           String
+  slug           String         @unique
+  bio            String         @default("")
+  whatsapp       String         @default("")
+  instagram      String         @default("")
+  address        String         @default("")
+  logoUrl        String         @default("")
+  coverUrl       String         @default("")
+  primaryColor   String         @default("#8F5176")
+  secondaryColor String         @default("#211925")
+  timezone       String         @default("America/Sao_Paulo")
+  createdAt      DateTime       @default(now())
+  services       Service[]
+  professionals  Professional[]
+  bookings       Booking[]
+  paymentAccount PaymentAccount?
+  oauthStates    OAuthState[]
+}
+
+model Service {
+  id           String      @id @default(uuid()) @map("_id")
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  description  String      @default("")
+  priceCents   Int
+  durationMin  Int
+  depositMode  DepositMode @default(NONE)
+  depositValue Int         @default(0) // percentual inteiro ou centavos, conforme modo
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  bookings     Booking[]
+  @@index([tenantId, active])
+}
+
+enum DepositMode {
+  NONE
+  PERCENT
+  FIXED
+}
+
+model Professional {
+  id        String    @id @default(uuid()) @map("_id")
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  photoUrl  String    @default("")
+  active    Boolean   @default(true)
+  // chaves 0..6 (domingo..sábado), valores ["09:00","18:00"] ou null
+  schedule  Json
+  bookings  Booking[]
+  bookingRevision Int @default(0) // Atualizado transacionalmente: exclusão mútua por profissional.
+  @@index([tenantId, active])
+}
+
+model Booking {
+  id              String         @id @default(uuid()) @map("_id")
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceId       String
+  service         Service        @relation(fields: [serviceId], references: [id])
+  professionalId  String
+  professional    Professional   @relation(fields: [professionalId], references: [id])
+  clientName      String
+  clientPhone     String
+  startAt         DateTime
+  endAt           DateTime
+  status          BookingStatus  @default(CONFIRMED)
+  expiresAt       DateTime?
+  depositCents    Int            @default(0)
+  checkoutUrl     String?
+  preferenceId    String?
+  mpPaymentId     String?
+  paymentStatus   String?
+  createdAt       DateTime       @default(now())
+  @@index([professionalId, startAt, endAt, status])
+  @@index([tenantId, startAt])
+  @@index([mpPaymentId])
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  EXPIRED
+  NEEDS_REVIEW
+}
+
+model PaymentAccount {
+  id               String   @id @default(uuid()) @map("_id")
+  tenantId         String   @unique
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sellerUserId     String
+  encryptedToken   String
+  encryptedRefresh String
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model OAuthState {
+  id                String    @id @default(uuid()) @map("_id")
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stateHash         String    @unique
+  encryptedVerifier String
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+}
