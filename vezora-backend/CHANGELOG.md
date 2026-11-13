@@ -16,3 +16,8 @@
 - Fluxo de agendamento mantém os dados após erro e informa falha ao consultar disponibilidade.
 
 Observação: dependências npm não foram instaladas neste ambiente por DNS indisponível. É necessário validar builds e teste integrado com MongoDB/Heroku antes de produção.
+
+## v1.0.3 — Assinaturas / Device ID
+- Aceita tokens opacos válidos do script de segurança Mercado Pago, sem limitar a 200 caracteres/alfanuméricos.
+- Rejeita caracteres de controle, CRLF e payloads excessivos antes de enviar o cabeçalho `X-meli-session-id`.
+- Log de presença do Device ID sem registrar seu conteúdo. Nenhuma alteração de Marketplace ou esquema Prisma.

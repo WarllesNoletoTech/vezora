@@ -50,6 +50,7 @@ async function mpAPI<T>(path:string,method:'GET'|'POST',body?:unknown,idempotenc
 export async function paymentFromProvider(id:string) {return mpAPI<MPSubscriptionPayment>(`/v1/payments/${encodeURIComponent(id)}`,'GET');}
 export async function generatePix(id:string,payerEmail:string,amountCents:number,document:string,expiresAt:Date,payerFullName='',deviceId?:string) {
   const payer=splitPayerName(payerFullName);
+  console.info('[Vezora Assinaturas] Pix solicitado; Device ID oficial:', validDeviceId(deviceId) ? 'presente' : 'indisponível');
   return mpAPI<MPSubscriptionPayment>('/v1/payments','POST',{
     transaction_amount:amountCents/100,
     description:'Assinatura Vezora - 30 dias',payment_method_id:'pix',

@@ -15,3 +15,8 @@
 - Fluxo de agendamento mantém os dados após erro e informa falha ao consultar disponibilidade.
 
 Observação: dependências npm não foram instaladas neste ambiente por DNS indisponível. É necessário validar builds e teste integrado com MongoDB/Heroku antes de produção.
+
+## v1.0.3 — Assinaturas / SDK JS V2
+- Aguarda por até 2,5 segundos o identificador oficial do dispositivo antes de solicitar Pix.
+- Com `NEXT_PUBLIC_VEZORA_MP_PUBLIC_KEY`, inicializa MercadoPago.js V2 somente na página `/assinatura`.
+- Preserva checkout hospedado para cartão recorrente e integração independente do Marketplace.

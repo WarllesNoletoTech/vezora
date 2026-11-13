@@ -17,4 +17,11 @@ test('nome de comprador e device id opcionais são tratados com limites',()=>{
   assert.equal(validDeviceId('abc-1234-xyz'),true);
   assert.equal(validDeviceId(''),false);
   assert.equal(validDeviceId('token com espaços'),false);
+  assert.equal(validDeviceId('base64+/='),true);
+  assert.equal(validDeviceId('sessao'+'.'.repeat(350)),true);
+  assert.equal(validDeviceId('a'.repeat(2048)),true);
+  assert.equal(validDeviceId('a'.repeat(2049)),false);
+  assert.equal(validDeviceId('abc-1234\r\nX-admin: injected'),false);
+  assert.equal(validDeviceId('abc-1234\n'),false);
+  assert.equal(validDeviceId(null),false);
 });

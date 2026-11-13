@@ -1,19 +1,17 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
-import Script from 'next/script';
 import {useRouter} from 'next/navigation';
 import {BadgeCheck,CheckCircle2,Copy,CreditCard,LockKeyhole,RefreshCw,ShieldCheck,Wallet,ArrowLeft} from 'lucide-react';
 import Brand from '@/components/Brand';
+import SubscriptionPaymentSecurity from '@/components/SubscriptionPaymentSecurity';
+import {waitForMercadoPagoDeviceId} from '@/lib/mercadoPagoDevice';
 import {api,brl} from '@/lib/api';
 
 type Billing={status:string;trialEndsAt:string|null;subscriptionEndsAt:string|null;daysRemaining:number;monthlyPriceCents:number;pixConfigured:boolean;cardConfigured:boolean};
 type Pix={invoiceId:string;amountCents:number;qrCode:string;qrCodeBase64:string;ticketUrl:string;expiresAt:string};
 type Card={configured:boolean;status:string;checkoutUrl:string|null;amountCents:number|null;preapprovalId:string|null};
 const date=(value:string|null)=>value?new Date(value).toLocaleDateString('pt-BR'):'—';
-// O Mercado Pago exige o atributo HTML `view=checkout` no security.js.
-// O Next.js Script renderiza atributos extras, mas não declara `view` em ScriptProps.
-const mercadoPagoSecurityAttributes = { view: 'checkout' } as const;
 export default function Subscription(){
  const router=useRouter();
  const [document,D]=useState(''),[state,S]=useState<Billing|null>(null),[invoice,I]=useState<Pix|null>(null);
@@ -35,14 +33,14 @@ export default function Subscription(){
   N('Você voltou do Mercado Pago. Vamos conferir o status do cartão e os pagamentos aprovados.');
   void refreshCard();
  },[]); // eslint-disable-line react-hooks/exhaustive-deps
- async function createPix(){B(true);E('');N('');try{const candidate=(window as Window & {MP_DEVICE_SESSION_ID?: unknown}).MP_DEVICE_SESSION_ID;const deviceId=(typeof candidate==='string' && /^[A-Za-z0-9._:-]{8,200}$/.test(candidate))?candidate:undefined;I(await api<Pix>('/billing/pix',{method:'POST',body:JSON.stringify({document,...(deviceId?{deviceId}:{})})}))}catch(e){E((e as Error).message)}finally{B(false)}}
+ async function createPix(){B(true);E('');N('');try{const deviceId=await waitForMercadoPagoDeviceId();I(await api<Pix>('/billing/pix',{method:'POST',body:JSON.stringify({document,...(deviceId?{deviceId}:{})})}))}catch(e){E((e as Error).message)}finally{B(false)}}
  async function confirmPix(){if(!invoice)return;B(true);E('');try{const x=await api<Billing&{paymentStatus:string}>(`/billing/check/${invoice.invoiceId}`,{method:'POST'});S(x);if(x.paymentStatus==='PAID'){I(null);N('Pagamento aprovado. Período de acesso atualizado!');}else N('Pagamento ainda pendente. O acesso será liberado após confirmação do Mercado Pago.')}catch(e){E((e as Error).message)}finally{B(false)}}
  async function startCard(){B(true);E('');N('');try{const x=await api<{checkoutUrl:string}>('/billing/card/start',{method:'POST'});if(!/^https:\/\/[^/]*mercadopago\.com(?:\.br)?\//.test(x.checkoutUrl))throw new Error('O Mercado Pago retornou um link de autorização inválido.');window.location.assign(x.checkoutUrl)}catch(e){E((e as Error).message);B(false)}}
  async function refreshCard(){B(true);E('');try{const c=await api<Card>('/billing/card/status');CARD(c);const billing=await api<Billing>('/billing/status');S(billing);N(billing.status==='ACTIVE'?'Pagamento confirmado: assinatura ativa.':c.status==='AUTHORIZED'?'Cartão autorizado. Aguardando a aprovação da cobrança pelo Mercado Pago.':'Status atualizado. Acesso somente após pagamento aprovado.');}catch(e){E((e as Error).message)}finally{B(false)}}
  async function cancelCard(){if(!window.confirm('Cancelar a renovação automática no cartão? Um período já pago continuará válido até seu vencimento.'))return;B(true);E('');try{await api('/billing/card/cancel',{method:'POST'});await refreshCard();N('Renovação automática cancelada.');}catch(e){E((e as Error).message)}finally{B(false)}}
  if(loading)return <div className="screen-loading"><span className="spinner"/><p>Verificando assinatura do Vezora...</p></div>;
  const active=state?.status==='ACTIVE';const trial=state?.status==='TRIAL';const suspended=state?.status==='SUSPENDED';
- return <main className="subscription-page"><Script src="https://www.mercadopago.com/v2/security.js" strategy="afterInteractive" {...mercadoPagoSecurityAttributes}/><section className="subscription-card subscription-card-wide">
+ return <main className="subscription-page"><SubscriptionPaymentSecurity/><section className="subscription-card subscription-card-wide">
   <div className="subscription-top"><Brand/><Link href="/painel" className="subscription-back"><ArrowLeft size={15}/> Voltar ao painel</Link></div>
   <div className="subscription-icon"><LockKeyhole size={26}/></div>
   <h1>Minha assinatura Vezora</h1>

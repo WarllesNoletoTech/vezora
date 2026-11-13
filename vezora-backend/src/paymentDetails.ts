@@ -4,9 +4,14 @@ export function splitPayerName(input: string): {firstName:string; lastName?:stri
   const [firstName, ...lastName] = cleaned.split(' ');
   return {firstName: firstName || 'Cliente', ...(lastName.length ? {lastName:lastName.join(' ')} : {})};
 }
-/** Identificador opcional do script oficial de segurança, enviado somente à API de pagamento. */
+/**
+ * MP_DEVICE_SESSION_ID é um token opaco gerado pelo script oficial, não necessariamente um UUID.
+ * Seu formato pode conter caracteres base64 (como +/=) e ter mais de 200 caracteres.
+ * Nunca aceitar quebras de linha, controles ou strings gigantes em cabeçalhos HTTP.
+ * Se indisponível, o Device ID permanece opcional (Pix não é bloqueado).
+ */
 export function validDeviceId(value:unknown): value is string {
-  return typeof value==='string' && value.length>=8 && value.length<=200 && /^[a-zA-Z0-9._:-]+$/.test(value);
+  return typeof value==='string' && value.length>=8 && value.length<=2048 && /^[\x21-\x7E]+$/.test(value);
 }
 export type MarketplacePaymentProof={
   status:string; collector_id:number|string; external_reference:string;
