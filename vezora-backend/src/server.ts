@@ -13,7 +13,8 @@ import { db } from './db';
 import { env } from './env';
 import { DEFAULT_SCHEDULE, depositCents, localSlot, phoneDigits, slotsForDay, Schedule } from './core';
 import { decrypt, encrypt, rand, sha256 } from './crypto';
-import { createPreference, exchangeCode, getPayment, mpReady, validMpWebhook } from './mp';
+import { createPreference, exchangeCode, mpReady, validMpWebhook } from './mp';
+import { reconcileMarketplaceWebhook, recoverMarketplaceBooking } from './marketplaceReconcile';
 import { themeFor } from './business';
 import { billingState, hasAccess, generatePix, reconcileSubscription, verifyBillingWebhook, platformSettings } from './billing';
 import adminRouter from './admin';
@@ -77,7 +78,7 @@ function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
 const accountData = z.object({name,phone,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
-app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'0.9.8'});});
+app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'0.9.9'});});
 app.get('/api/platform/public-settings',wrap(async(_req,res)=>{const s=await platformSettings();res.json({trialDays:s.trialDays});}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
@@ -295,6 +296,16 @@ app.get('/api/booking-status/:id',wrap(async(req,res)=>{
   const isExpired=b.status==='PENDING_PAYMENT'&&!!b.expiresAt&&b.expiresAt<new Date();
   res.json({...b,status:isExpired?'EXPIRED':b.status,checkoutUrl:isExpired?null:b.checkoutUrl});
 }));
+// Recuperação manual de webhook perdido: verifica o pagamento diretamente na conta
+// OAuth do lojista. Não aceita informações de pagamento fornecidas pelo cliente.
+const reconcileLimiter=rateLimit({windowMs:15*60_000,limit:6,standardHeaders:'draft-7',legacyHeaders:false});
+app.post('/api/booking-status/:id/reconcile',reconcileLimiter,wrap(async(req,res)=>{
+  const id=z.string().uuid().parse(req.params.id);
+  const result=await recoverMarketplaceBooking(id);
+  if(result.reason==='booking_not_found') fail(404,'Reserva não encontrada');
+  const booking=await db.booking.findUnique({where:{id},select:{status:true,paymentStatus:true,depositPaidAt:true}});
+  res.json({status:booking?.status||null,paymentStatus:booking?.paymentStatus||null,verified:!!booking?.depositPaidAt,outcome:result.outcome});
+}));
 
 // Assinatura da PLATAFORMA: não utiliza o token OAuth individual do lojista.
 app.get('/api/billing/status',auth,wrap(async(req,res)=>{
@@ -414,46 +425,31 @@ app.delete('/api/payments/connect',auth,subscriptionGuard,wrap(async(req,res)=>{
   await db.paymentAccount.deleteMany({where:{tenantId:t.id}});
   res.json({ok:true});
 }));
-// URL genérica opcional no painel de integração. As preferências de pagamento
-// usam notification_url individual contendo o tenantId para conciliação real.
-app.post('/api/payments/webhook',wrap(async(req,res)=>{
-  const dataId=String(req.query['data.id']||'');
-  if(!validMpWebhook(String(req.headers['x-signature']||''),String(req.headers['x-request-id']||''),dataId)) fail(401,'Assinatura inválida');
-  // Sem tenantId não é seguro identificar uma reserva ou marcar pagamento aprovado.
-  console.warn('Webhook Marketplace genérico recebido sem estabelecimento; conciliação não aplicada');
-  res.json({received:true});
-}));
-app.post('/api/payments/webhook/:tenantId',wrap(async(req,res)=>{
-  // A assinatura usa o data.id do querystring, nunca apenas o body enviado por terceiros.
+// Webhooks externos não usam cookie de lojista. A assinatura HMAC é obrigatória.
+// A confirmação é SEMPRE feita por consulta autenticada ao Mercado Pago, com validação
+// do recebedor, da referência e do valor antes de modificar uma reserva.
+async function marketplaceWebhook(req: Authed,res: Response, tenantId?: string) {
   const dataId=String(req.query['data.id']||'');
   if(!validMpWebhook(String(req.headers['x-signature']||''),String(req.headers['x-request-id']||''),dataId)) fail(401,'Assinatura inválida');
   if(req.query.type!=='payment' && req.body?.type!=='payment') {res.status(200).json({received:true});return;}
   if(!/^\d{1,24}$/.test(dataId)) {res.status(200).json({received:true});return;}
-  try{
-    const t=await db.tenant.findUnique({where:{id:String(req.params.tenantId)},include:{paymentAccount:true}});
-    if(!t?.paymentAccount) {res.status(200).json({received:true});return;}
-    const payment=await getPayment(t.id,dataId);
-    if(String(payment.collector_id)!==t.paymentAccount.sellerUserId) {res.status(200).json({received:true});return;}
-    const booking=await db.booking.findFirst({where:{id:payment.external_reference,tenantId:t.id}});
-    if(!booking||!booking.depositCents||Math.abs(payment.transaction_amount*100-booking.depositCents)>1) {res.status(200).json({received:true});return;}
-    await db.$transaction(async tx=>{
-      const current=await tx.booking.findUnique({where:{id:booking.id}});
-      if(!current) return;
-      const amountMatches=Math.abs(payment.transaction_amount*100-current.depositCents)<=1;
-      if(!amountMatches) return;
-      const paid=payment.status==='approved';
-      // Não deixar uma segunda tentativa recusada sobrescrever o pagamento aprovado.
-      if(current.paymentStatus==='approved' && current.mpPaymentId!==String(payment.id) && !paid) return;
-      let status:BookingStatus=current.status;
-      if(paid && current.status==='PENDING_PAYMENT') status=current.expiresAt && current.expiresAt<new Date()?'NEEDS_REVIEW':'CONFIRMED';
-      else if(paid && ['EXPIRED','CANCELLED'].includes(current.status)) status='NEEDS_REVIEW';
-      else if(paid && current.paymentStatus==='approved' && current.mpPaymentId && current.mpPaymentId!==String(payment.id)) status='NEEDS_REVIEW';
-      else if(['cancelled','refunded','charged_back'].includes(payment.status) && ['CONFIRMED','COMPLETED'].includes(current.status) && current.mpPaymentId===String(payment.id)) status='NEEDS_REVIEW';
-      await tx.booking.update({where:{id:current.id},data:{status,paymentStatus:payment.status,mpPaymentId:String(payment.id),depositPaidAt:paid?(current.depositPaidAt||new Date()):(['refunded','charged_back','cancelled'].includes(payment.status)?null:current.depositPaidAt)}});
-    });
+  try {
+    // user_id é apenas uma pista para encontrar a conta do vendedor no webhook genérico.
+    // A titularidade real é conferida novamente na API do Mercado Pago.
+    const sellerId=req.body?.user_id==null?undefined:String(req.body.user_id);
+    const results=await reconcileMarketplaceWebhook(dataId,sellerId,tenantId);
+    console.info('Webhook Marketplace processado', {route:tenantId?'tenant':'generic',outcomes:results.map(r=>r.outcome),statuses:results.map(r=>r.status||r.reason)});
+    // Não confirmar entrega de notificação que não pôde identificar o vendedor.
+    // Retornar 503 permite novas tentativas em caso de problema temporário.
+    if(results.some(r=>r.outcome==='not_found')) {res.status(503).json({received:false});return;}
     res.status(200).json({received:true});
-  }catch(e){console.error('Falha ao reconciliar webhook do MP',e);res.status(503).json({error:'Conciliação indisponível; reenvie o evento'});}
-}));
+  } catch(e) {
+    console.error('Falha ao reconciliar webhook Marketplace',e);
+    res.status(503).json({error:'Conciliação indisponível; reenvie o evento'});
+  }
+}
+app.post('/api/payments/webhook',wrap(async(req,res)=>marketplaceWebhook(req,res)));
+app.post('/api/payments/webhook/:tenantId',wrap(async(req,res)=>marketplaceWebhook(req,res,String(req.params.tenantId))));
 
 // A role e consultada no banco a cada chamada administrativa.
 app.use('/api/admin',auth,(req:Authed,_res,next)=>{

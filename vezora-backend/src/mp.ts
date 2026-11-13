@@ -43,8 +43,16 @@ export async function createPreference(tenantId: string, payload: unknown) {
 }
 export async function getPayment(tenantId: string, paymentId: string) {
   const token = await sellerToken(tenantId);
-  return mpRequest<{id: number; status: string; external_reference: string; transaction_amount: number; collector_id: number}>(`/v1/payments/${paymentId}`, 'GET', token);
+  return mpRequest<{id: number; status: string; external_reference: string; transaction_amount: number; collector_id: number; date_approved?: string | null}>(`/v1/payments/${paymentId}`, 'GET', token);
 }
 export function validMpWebhook(xSignature: string, requestId: string, dataId: string) {
   return verifyMercadoPagoSignature(xSignature, requestId, dataId, env.MP_WEBHOOK_SECRET);
+}
+
+// Consulta de recuperação por referência externa (não cria nem altera cobranças).
+export async function searchPaymentsForBooking(tenantId: string, bookingId: string) {
+  const token=await sellerToken(tenantId);
+  const query=new URLSearchParams({external_reference:bookingId,sort:'date_created',criteria:'desc',limit:'20'});
+  const data=await mpRequest<{results: Array<{id:number;status:string;external_reference:string}>}>(`/v1/payments/search?${query}`, 'GET', token);
+  return Array.isArray(data.results)?data.results:[];
 }

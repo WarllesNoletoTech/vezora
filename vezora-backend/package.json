@@ -1,6 +1,6 @@
 {
   "name": "vezora-backend",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -16,7 +16,8 @@
     "db:backfill-v07": "node scripts/backfill-v07.cjs",
     "db:backfill-finance": "node scripts/backfill-admin-finance.cjs",
     "db:repair-legacy": "node scripts/repair-legacy-records.cjs",
-    "db:audit-owners": "node scripts/audit-orphan-owners.cjs"
+    "db:audit-owners": "node scripts/audit-orphan-owners.cjs",
+    "payments:reconcile-booking": "node scripts/reconcile-marketplace-booking.cjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
