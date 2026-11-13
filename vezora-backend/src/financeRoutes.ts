@@ -3,7 +3,7 @@ import {ReceiptMethod} from '@prisma/client';
 import {DateTime} from 'luxon';
 import {z} from 'zod';
 import {db} from './db';
-import {financialSummary} from './finance';
+import {financialSummary, type FinancialBookingRow, type FinancialProRow, type CommissionModeValue} from './finance';
 import {renderFinancialPdf} from './financePdf';
 
 export const financialRoutes=Router();
@@ -23,12 +23,39 @@ async function reportData(req:Request){
   if(!from.isValid||!to.isValid||from.toMillis()>to.toMillis()||to.diff(from,'days').days>366)fail(400,'Informe um período válido de até 366 dias');
   const where={tenantId:tenant.id,startAt:{gte:from.toUTC().toJSDate(),lt:to.plus({days:1}).toUTC().toJSDate()}};
   // Não apresentar relatórios truncados sem aviso.
-  const [bookings,pros]=await Promise.all([
-    db.booking.findMany({where,include:{service:{select:{id:true,name:true,priceCents:true}},professional:{select:{id:true,name:true,commissionMode:true,commissionValue:true}},receipts:{select:{id:true,amountCents:true,method:true,note:true,createdAt:true,voidedAt:true,voidReason:true}}},orderBy:{startAt:'desc'},take:5001}),
-    db.professional.findMany({where:{tenantId:tenant.id,active:true},select:{id:true,name:true,role:true,salaryEnabled:true,salaryCents:true,commissionMode:true,commissionValue:true}})
+  const [bookings,staffRaw]=await Promise.all([
+    db.booking.findMany({where,include:{service:{select:{id:true,name:true,priceCents:true}},professional:{select:{id:true,name:true}},receipts:{select:{id:true,amountCents:true,method:true,note:true,createdAt:true,voidedAt:true,voidReason:true}}},orderBy:{startAt:'desc'},take:5001}),
+    // aggregateRaw evita erro P2032 caso um funcionario antigo nao tenha
+    // salario, vinculo ou comissao (campos adicionados na versao v0.7).
+    db.professional.aggregateRaw({pipeline:[
+      {$match:{tenantId:tenant.id}},
+      {$project:{_id:1,name:1,active:1,role:1,salaryEnabled:1,salaryCents:1,commissionMode:1,commissionValue:1}},
+      {$limit:20001}
+    ]})
   ]);
   if(bookings.length>5000)fail(422,'O período contém mais de 5.000 reservas. Selecione um intervalo menor.');
-  return {tenant:{id:tenant.id,name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},period:params,generatedAt:new Date(),...financialSummary(bookings,pros)};
+  type RawStaff={_id?:unknown;name?:unknown;active?:unknown;role?:unknown;salaryEnabled?:unknown;salaryCents?:unknown;commissionMode?:unknown;commissionValue?:unknown};
+  const raw=Array.isArray(staffRaw)?staffRaw as RawStaff[]:[];
+  if(raw.length>20000)fail(422,'Há mais de 20.000 profissionais. Contate o suporte para consultar esse relatório.');
+  const validMoney=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:0;
+  const validMode=(value:unknown):CommissionModeValue=>value==='PERCENT'||value==='FIXED'?value:'NONE';
+  const pros:FinancialProRow[]=raw.filter(item=>typeof item._id==='string').map(item=>({
+    id:item._id as string,
+    name:typeof item.name==='string'?item.name:'Profissional',
+    role:item.role==='OWNER'||item.role==='CONTRACTOR'?item.role:'EMPLOYEE',
+    salaryEnabled:item.salaryEnabled===true,
+    salaryCents:validMoney(item.salaryCents),
+    commissionMode:validMode(item.commissionMode),
+    commissionValue:validMoney(item.commissionValue)
+  }));
+  const professionals=new Map(pros.map(p=>[p.id,p]));
+  const activeIds=new Set(raw.filter(r=>r.active!==false&&typeof r._id==='string').map(r=>r._id));
+  const safeBookings:FinancialBookingRow[]=bookings.map(b=>({
+    ...b,professional:{...b.professional,
+      commissionMode:professionals.get(b.professionalId)?.commissionMode||'NONE',
+      commissionValue:professionals.get(b.professionalId)?.commissionValue||0}
+  }));
+  return {tenant:{id:tenant.id,name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},period:params,generatedAt:new Date(),...financialSummary(safeBookings,pros.filter(p=>activeIds.has(p.id)))};
 }
 financialRoutes.get('/reports/financial',run(async(req,res)=>{res.json(await reportData(req));}));
 financialRoutes.get('/reports/financial.pdf',run(async(req,res)=>{

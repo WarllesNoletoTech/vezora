@@ -30,6 +30,9 @@ export default function AdminDiagnosticPanel(){
     const r=await readApi(path);
     let msg=r.status===200?'HTTP 200 — conectado':`HTTP ${r.status}`;
     let passed=r.status===200;
+    if(path==='/health'&&r.status===200){
+     msg=`HTTP 200 — API ${typeof r.data.version==='string'?r.data.version:'versão não identificada'}`;
+    }
     if(path==='/me'&&r.status===200){
      const user=r.data.user as {role?:string}|undefined;
      msg=`HTTP 200 — perfil: ${user?.role||'não informado'}`;

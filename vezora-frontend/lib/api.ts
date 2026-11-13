@@ -1,10 +1,30 @@
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name='ApiError';
+  }
+}
 export async function api<T>(path:string,options:RequestInit={}) :Promise<T>{
-  const res=await fetch(`/api${path}`,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})},cache:'no-store'});
+  if(!path.startsWith('/')||path.startsWith('//')) throw new ApiError('Caminho de API inválido',400);
+  let res: Response;
+  try {
+    const headers=new Headers(options.headers);
+    if(options.body && !headers.has('Content-Type')) headers.set('Content-Type','application/json');
+    res=await fetch(`/api${path}`,{...options,credentials:'same-origin',headers,cache:'no-store'});
+  } catch(error) {
+    if(error instanceof Error && error.name==='AbortError')throw error;
+    throw new ApiError('Falha de conexão com a API. Verifique sua internet e o Heroku.',0);
+  }
   const isJson=(res.headers.get('content-type')||'').includes('application/json');
-  const value=isJson?await res.json().catch(()=>({})):{};
+  const value=isJson?await res.json().catch(()=>({})):{ };
   if(!res.ok){
-    if(res.status===404 && !isJson) throw new Error('Rota da API nao encontrada. Verifique o deploy do frontend e o endereco do backend.');
-    throw new Error((value as {error?:string}).error || (res.status>=500?'Serviço temporariamente indisponível. Tente novamente em alguns instantes.':`Erro ${res.status}`));
+    const backendMessage=(value as {error?:unknown}).error;
+    const message=typeof backendMessage==='string'&&backendMessage.trim()?backendMessage:
+      res.status===401?'Entre na sua conta novamente.':
+      res.status===403?'Você não possui permissão para esta operação.':
+      res.status===404?'Rota da API não encontrada. Confira as versões publicadas.':
+      res.status>=500?'Serviço temporariamente indisponível. Confira os logs do Heroku.':`Erro HTTP ${res.status}`;
+    throw new ApiError(message,res.status);
   }
   return value as T;
 }

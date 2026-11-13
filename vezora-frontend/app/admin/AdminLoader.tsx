@@ -1,24 +1,7 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import AdminDashboard from './AdminDashboard';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-
-const AdminDashboard = dynamic(() => import('./AdminDashboard'), {
-  ssr: false,
-  loading: () => <main className="ad-bootstrap" role="status" aria-live="polite">
-    <div className="ad-bootstrap-card">
-      <div className="ad-bootstrap-logo">V</div>
-      <p className="ad-bootstrap-eyebrow">VEZORA · ADMINISTRAÇÃO</p>
-      <h1>Carregando seu painel</h1>
-      <p>Preparando estabelecimentos, assinaturas e relatórios financeiros.</p>
-      <div className="ad-bootstrap-actions">
-        <a href="/admin/diagnostico">Verificar conexão</a>
-        <a href="/">Página inicial</a>
-      </div>
-      <small>Se esta tela não avançar, abra “Verificar conexão” para identificar a falha.</small>
-    </div>
-  </main>,
-});
 
 type ErrorBoundaryState = { failed: boolean; message: string };
 class AdminBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {

@@ -39,6 +39,12 @@ function Pager({page,total,per=15,onChange}:{page:number;total:number;per?:numbe
 }
 export default function AdminPage(){
  const router=useRouter();
+ // Recuperacao de sessoes antigas: nunca limpa dados de outros sites nem MongoDB.
+ async function resetSession(){
+   try { await api('/auth/logout',{method:'POST'}); } catch { /* cookie antigo pode estar invalido */ }
+   window.location.assign('/entrar');
+ }
+
  const [gate,G]=useState<'checking'|'ready'|'denied'|'failed'>('checking');
  const [gateError,GERR]=useState('');
  const [myName,N]=useState('Administrador');
@@ -124,8 +130,8 @@ export default function AdminPage(){
   return [...groups.values()].sort((a,b)=>b.revenue-a.revenue);
  },[finance]);
  if(gate==='checking')return <main className="ad-bootstrap" role="status" aria-live="polite"><div className="ad-bootstrap-card"><div className="ad-bootstrap-logo">V</div><p className="ad-bootstrap-eyebrow">VEZORA · ADMINISTRAÇÃO</p><h1>Validando seu acesso</h1><p>Verificando a sessão de superadministrador e preparando os dados do painel.</p><div className="ad-bootstrap-actions"><a href="/admin/diagnostico">Diagnosticar conexão</a><a href="/entrar">Entrar novamente</a></div><small>Se a tela não avançar, use o diagnóstico para identificar falhas de API ou permissão.</small></div></main>;
- if(gate==='failed')return <main className="ad-denied" role="alert"><AlertTriangle size={38}/><h1>Não foi possível carregar o painel</h1><p>{gateError||'Verifique a conexão e sua sessão de administrador.'}</p><div className="ad-cell-actions"><button className="btn btn-primary" onClick={()=>window.location.reload()}>Tentar novamente</button><Link href="/entrar" className="btn">Entrar novamente</Link></div></main>;
- if(gate==='denied')return <main className="ad-denied"><ShieldCheck size={38}/><h1>Acesso restrito</h1><p>Esta área exige permissão de superadministrador, concedida pelo servidor.</p><Link href="/painel" className="btn btn-primary">Voltar ao meu painel</Link></main>;
+ if(gate==='failed')return <main className="ad-denied" role="alert"><AlertTriangle size={38}/><h1>Não foi possível carregar o painel</h1><p>{gateError||'Verifique a conexão e sua sessão de administrador.'}</p><div className="ad-cell-actions"><button className="btn btn-primary" onClick={()=>window.location.reload()}>Tentar novamente</button><button type="button" className="btn" onClick={()=>void resetSession()}>Limpar sessão e entrar</button></div></main>;
+ if(gate==='denied')return <main className="ad-denied"><ShieldCheck size={38}/><h1>Acesso restrito</h1><p>Esta área exige permissão de superadministrador, concedida pelo servidor.</p><button type="button" className="btn btn-primary" onClick={()=>void resetSession()}>Sair e entrar com outra conta</button></main>;
  return <div className="ad-shell">
   <aside className={`ad-sidebar ${nav?'expanded':''}`}>
    <div className="ad-sidebar-top"><Brand light/><span className="ad-admin-pill"><ShieldCheck size={13}/> Administração</span></div>
