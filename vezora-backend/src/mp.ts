@@ -3,7 +3,7 @@ import { db } from './db';
 import { decrypt, encrypt } from './crypto';
 import { env } from './env';
 
-export function mpReady() { return Boolean(env.MP_CLIENT_ID && env.MP_CLIENT_SECRET && env.MP_REDIRECT_URI && env.MP_WEBHOOK_SECRET); }
+export function mpReady() { return Boolean(env.MP_CLIENT_ID && env.MP_CLIENT_SECRET && env.MP_REDIRECT_URI && env.MP_WEBHOOK_SECRET && env.API_PUBLIC_URL); }
 async function mpRequest<T>(path: string, method: string, token: string | null, body?: unknown): Promise<T> {
   const res = await fetch(`https://api.mercadopago.com${path}`, {
     method,

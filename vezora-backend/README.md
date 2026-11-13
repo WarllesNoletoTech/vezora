@@ -5,7 +5,7 @@ API Node.js + Express + Prisma **6.19.0** com conector MongoDB. Projeto independ
 ## Executar localmente
 
 1. `npm install`
-2. Copie `.env.example` para `.env` e configure `DATABASE_URL` com **MongoDB Atlas (replica set)**, as chaves `JWT_SECRET` e `TOKEN_ENCRYPTION_KEY`.
+2. Copie `.env.example` para `.env` e configure `MONGODB_URI` com **MongoDB Atlas (replica set)**, as chaves `JWT_SECRET` e `TOKEN_ENCRYPTION_KEY`.
 3. `npm run db:generate`
 4. `npm run db:push` (cria coleções e índices; revise mudanças de schema antes de usar em produção).
 5. `npm run dev`
@@ -21,7 +21,7 @@ Este ZIP tem uma pasta `vezora-backend/` pronta para ser usada como **raiz de re
 
 1. Crie o app Heroku com stack Heroku-24 e Node 24.x (definido no `package.json`).
 2. Em Settings → Config Vars, cadastre os valores da `.env.example`, **sem as aspas extras** em campos do painel. Heroku fornece `PORT` automaticamente, não configure `PORT` manualmente.
-3. Defina `NODE_ENV=production`, `WEB_URL=https://SEU-FRONT.vercel.app`, `API_PUBLIC_URL=https://SEU-BACK.herokuapp.com` (domínios exatos, sem `/` final), `DATABASE_URL` (MongoDB Atlas), `JWT_SECRET` e `TOKEN_ENCRYPTION_KEY`.
+3. Defina `NODE_ENV=production`, `WEB_URL=https://SEU-FRONT.vercel.app`, `API_PUBLIC_URL=https://SEU-BACK.herokuapp.com` (domínios exatos, sem `/` final), `MONGODB_URI` (MongoDB Atlas), `JWT_SECRET` e `TOKEN_ENCRYPTION_KEY`.
 4. Na configuração do MongoDB Atlas, autorize o acesso de rede do Heroku à instância (preferencialmente IP fixo/egress estático ou solução privada). Não exponha credenciais.
 5. Faça o deploy. O Heroku executará `heroku-postbuild` → `prisma generate && tsc`; o `Procfile` executará `npm run start` (`node dist/server.js`).
 6. **Antes do primeiro cadastro e a cada alteração compatível do schema**, execute `heroku run npm run db:push -a NOME_DO_APP`. Nunca habilite `--accept-data-loss` automaticamente.
@@ -56,3 +56,15 @@ Documentação: https://www.prisma.io/docs/orm/v6/overview/databases/mongodb
 - Erro 403 no cadastro geralmente indica `WEB_URL` do Heroku diferente do frontend publico.
 - Erro 409 geralmente indica email ou slug ja registrado.
 - Em producao a API agora retorna JSON 404 para rotas `/api` desconhecidas.
+
+
+## Correção do erro Heroku H10 na versão 0.3
+
+- O Prisma usa `MONGODB_URI` diretamente, compatível com a Config Var presente no Heroku.
+- `WEB_URL` aceita barra final, mas é normalizada automaticamente antes da validação CORS.
+- `API_PUBLIC_URL` deixa de impedir o início da API quando pagamentos ainda não estão configurados; para habilitar Mercado Pago, defina o endereço público HTTPS correto.
+- O servidor só começa a ouvir a porta após conectar no MongoDB. Quando o Atlas estiver inacessível, consulte o log de inicialização (antes das linhas H10).
+- `MONGODB_URI` deve incluir o nome do banco, por exemplo `/vezora`, e o Atlas precisa permitir a conexão do Heroku via Network Access.
+- Se o Heroku utilizar repositório mono-repo, a raiz do projeto precisa ser `vezora-backend`. O `Procfile` é `web: npm start`.
+- Mantenha `WEB_URL` como a origem do frontend (sem caminho), por exemplo `https://vezora-agendamentos.vercel.app`.
+- Antes de pagamentos reais, gere novas credenciais privadas (as chaves mostradas em capturas de tela não devem ser reutilizadas).

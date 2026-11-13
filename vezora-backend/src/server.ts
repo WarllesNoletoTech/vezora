@@ -313,6 +313,6 @@ void db.$connect().then(() => {
     server.close(() => { void db.$disconnect().finally(() => process.exit(0)); });
   });
 }).catch(error => {
-  console.error('Falha de conexão com MongoDB. Verifique DATABASE_URL e acesso de rede.', error);
+  console.error('Falha de conexão com MongoDB. Confira MONGODB_URI, banco na URL, usuário, senha, replica set e Network Access do Atlas. Tipo:', error instanceof Error ? error.name : 'desconhecido');
   process.exit(1);
 });
