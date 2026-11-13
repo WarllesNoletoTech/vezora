@@ -463,3 +463,25 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .ad-shell .ad-info{margin-top:6px}
 @media(max-width:780px){.ad-finance-filters{padding:14px}.ad-finance-filters label{flex:1 1 145px}.ad-finance-heading{padding:15px}.ad-content .ad-action{white-space:nowrap}.ad-cell-actions{flex-wrap:wrap}}
 @media(max-width:400px){.ad-finance-filters label{flex:1 1 100%}.ad-content .ad-heading>.ad-cell-actions{width:100%}.ad-content .ad-heading>.ad-cell-actions a{flex:1;justify-content:center}}
+
+/* Vezora Admin 0.8.1: falha segura e diagnóstico renderizados antes da área dinâmica */
+.ad-bootstrap,.ad-diagnostic-page{min-height:100dvh;display:grid;place-items:center;background:#eff3f5;padding:24px;color:#203240}
+.ad-bootstrap-card,.ad-diagnostic-card{width:min(540px,100%);padding:36px;background:#fff;border:1px solid #dce5ea;border-radius:18px;box-shadow:0 12px 45px #12243213}
+.ad-bootstrap-logo{width:48px;height:48px;border-radius:13px;background:#203c4a;color:#e7bd69;display:grid;place-items:center;font-size:26px;font-weight:900;margin-bottom:18px}
+.ad-bootstrap-eyebrow,.ad-diagnostic-mark{display:block;font-size:11px;font-weight:800;letter-spacing:.13em;color:#54788a;margin-bottom:8px}
+.ad-bootstrap h1,.ad-diagnostic-card h1{font-size:clamp(22px,5vw,30px);margin:0 0 14px}
+.ad-bootstrap p,.ad-diagnostic-card p{color:#577080;font-size:14px;line-height:1.6}
+.ad-bootstrap-card>small{display:block;margin-top:16px;font-size:12px;color:#6d8490}
+.ad-bootstrap-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:20px}
+.ad-bootstrap-actions a,.ad-bootstrap-actions button,.ad-diagnostic-results button{border:0;border-radius:9px;padding:12px 15px;font-weight:700;font-size:13px;background:#234657;color:#fff;text-decoration:none;cursor:pointer}
+.ad-bootstrap-actions a:last-child{background:#edf3f5;color:#234657}
+.ad-bootstrap-error{background:#fff0ef;color:#a12424!important;border-radius:8px;padding:12px;overflow-wrap:anywhere}
+.ad-diagnostic-card{width:min(680px,100%)}
+.ad-diagnostic-results{display:grid;gap:12px;margin:22px 0 20px}
+.ad-diagnostic-results h2{font-size:17px}
+.ad-diagnostic-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 10px;background:#f6f9fa;border:1px solid #e0e9ed;border-radius:9px;padding:12px}
+.ad-diagnostic-item strong{font-size:13px}.ad-diagnostic-item small{grid-column:1/-1;color:#56717e;font-size:12px;overflow-wrap:anywhere}
+.ad-diagnostic-status{font-size:11px;border-radius:30px;padding:5px 9px;background:#e4eef4;color:#356072}
+.ad-diagnostic-status.ok{background:#e2f3e9;color:#176846}.ad-diagnostic-status.failed{background:#fce7e7;color:#a12929}
+.ad-diagnostic-results button:disabled{opacity:.6;cursor:default}
+@media(max-width:480px){.ad-bootstrap-card,.ad-diagnostic-card{padding:25px 18px}}
