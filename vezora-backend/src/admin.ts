@@ -98,20 +98,21 @@ router.get('/tenants',run(async(req,res)=>{
   const [total,items]=await Promise.all([
     db.tenant.count({where}),
     db.tenant.findMany({where,take:perPage,skip:(input.page-1)*perPage,orderBy:{createdAt:'desc'},
-      select:{...summaryTenantSelect,name:true,slug:true,whatsapp:true,subscriptionEndsAt:true,suspensionReason:true,
+      select:{...summaryTenantSelect,name:true,slug:true,subscriptionEndsAt:true,suspensionReason:true,
         owner:{select:{id:true,name:true,email:true,phone:true}},_count:{select:{services:true,professionals:true,bookings:true}}}})
   ]);
-  res.json({items:items.map(t=>({...t,billingStatus:accessPeriod(t).status})),page:input.page,pageSize:perPage,total});
+  res.json({items:items.map(t=>({...t,whatsapp:t.owner.phone||'',billingStatus:accessPeriod(t).status})),page:input.page,pageSize:perPage,total});
 }));
 router.get('/tenants/:id',run(async(req,res)=>{
-  const t=await db.tenant.findUnique({where:{id:String(req.params.id)},include:{
+  const t=await db.tenant.findUnique({where:{id:String(req.params.id)},select:{
+    ...summaryTenantSelect,name:true,slug:true,suspensionReason:true,
     owner:{select:{id:true,name:true,email:true,phone:true,createdAt:true}},
     subscriptionPayments:{take:15,orderBy:{createdAt:'desc'},select:{id:true,amountCents:true,status:true,paidAt:true,createdAt:true,expiresAt:true}},
     _count:{select:{services:true,professionals:true,bookings:true}},
     paymentAccount:{select:{sellerUserId:true,createdAt:true}}
   }});
   if(!t)fail(404,'Estabelecimento não encontrado');
-  res.json({...t,billingStatus:accessPeriod(t).status});
+  res.json({...t,whatsapp:t.owner.phone||'',billingStatus:accessPeriod(t).status});
 }));
 router.patch('/tenants/:id/suspension',run(async(req,res)=>{
   const {suspended,reason:why}=z.object({suspended:z.boolean(),reason:z.string().trim().max(240).default('')}).strict().parse(req.body);

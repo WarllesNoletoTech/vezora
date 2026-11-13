@@ -7,6 +7,8 @@ const initial: Check[] = [
  {label:'API /api/health',status:'checking',message:'Aguardando teste'},
  {label:'Sessão /api/me',status:'checking',message:'Aguardando teste'},
  {label:'Permissão /api/admin/summary',status:'checking',message:'Aguardando teste'},
+ {label:'Listagem /api/admin/tenants',status:'checking',message:'Aguardando teste'},
+ {label:'Financeiro /api/admin/finance/summary',status:'checking',message:'Aguardando teste'},
 ];
 
 async function readApi(path:string):Promise<{status:number; data:Record<string,unknown>}> {
@@ -23,7 +25,9 @@ export default function AdminDiagnosticPanel(){
  const [running,RUN]=useState(true);
  const run=useCallback(async()=>{
   RUN(true);setItems(initial);
-  const targets=[['API /api/health','/health'],['Sessão /api/me','/me'],['Permissão /api/admin/summary','/admin/summary']] as const;
+  const now=new Date().toISOString().slice(0,10);
+  const begin=now.slice(0,7)+'-01';
+  const targets=[['API /api/health','/health'],['Sessão /api/me','/me'],['Permissão /api/admin/summary','/admin/summary'],['Listagem /api/admin/tenants','/admin/tenants?page=1&businessType=TODOS'],['Financeiro /api/admin/finance/summary',`/admin/finance/summary?from=${begin}&to=${now}`]] as const;
   for(let i=0;i<targets.length;i++){
    const [label,path]=targets[i];
    try {
@@ -40,6 +44,7 @@ export default function AdminDiagnosticPanel(){
      if(!passed)msg+=' (acesso administrativo não concedido)';
     }
     if(!passed && typeof r.data.error==='string')msg+=' — '+r.data.error;
+    if(!passed && typeof r.data.requestId==='string')msg+=' · referência '+r.data.requestId;
     setItems(prev=>prev.map((item,n)=>n===i?{label,status:passed?'ok':'failed',message:msg}:item));
    } catch(e) {
     const message=e instanceof Error&&e.name==='AbortError'?'Tempo de resposta excedido (12 s)':e instanceof Error?e.message:'Falha de rede';

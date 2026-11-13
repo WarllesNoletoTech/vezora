@@ -47,7 +47,7 @@ export async function createAdminFinanceReport(query:unknown){
  const timeRange={gte:begin.startOf('day').toUTC().toJSDate(),lt:end.plus({days:1}).startOf('day').toUTC().toJSDate()};
  const tenants=await db.tenant.findMany({
   where:p.tenantId?{id:p.tenantId}:{},take:MAX_TENANTS+1,orderBy:{name:'asc'},
-  select:{id:true,name:true,slug:true,businessType:true,createdAt:true,timezone:true,
+  select:{id:true,name:true,slug:true,businessType:true,createdAt:true,
    owner:{select:{name:true,email:true,phone:true}},paymentAccount:{select:{id:true}}}
  });
  if(tenants.length>MAX_TENANTS)fail(422,'Há mais de 1.000 estabelecimentos. Divida a consulta por estabelecimento.');

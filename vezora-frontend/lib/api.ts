@@ -19,12 +19,14 @@ export async function api<T>(path:string,options:RequestInit={}) :Promise<T>{
   const value=isJson?await res.json().catch(()=>({})):{ };
   if(!res.ok){
     const backendMessage=(value as {error?:unknown}).error;
+    const requestId=((value as {requestId?:unknown}).requestId || res.headers.get('x-request-id'));
+    const supportCode=typeof requestId==='string' && /^[a-zA-Z0-9-]{8,80}$/.test(requestId)?` (referência: ${requestId})`:'';
     const message=typeof backendMessage==='string'&&backendMessage.trim()?backendMessage:
       res.status===401?'Entre na sua conta novamente.':
       res.status===403?'Você não possui permissão para esta operação.':
       res.status===404?'Rota da API não encontrada. Confira as versões publicadas.':
       res.status>=500?'Serviço temporariamente indisponível. Confira os logs do Heroku.':`Erro HTTP ${res.status}`;
-    throw new ApiError(message,res.status);
+    throw new ApiError(res.status>=500?message+supportCode:message,res.status);
   }
   return value as T;
 }

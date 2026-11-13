@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'node:crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -76,7 +77,7 @@ function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
 const accountData = z.object({name,phone,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
-app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'0.9.3'});});
+app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'0.9.5'});});
 app.get('/api/platform/public-settings',wrap(async(_req,res)=>{const s=await platformSettings();res.json({trialDays:s.trialDays});}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
@@ -460,15 +461,22 @@ app.use('/api/admin',auth,(req:Authed,_res,next)=>{
 
 app.use('/api',(_req,res)=>res.status(404).json({error:'Rota da API nao encontrada. Confirme a versao do backend implantada no Heroku.'}));
 
-app.use((err:unknown,_req:Request,res:Response,_next:NextFunction)=>{
+app.use((err:unknown,req:Request,res:Response,_next:NextFunction)=>{
   if(res.headersSent)return;
+  const requestId = /^[a-zA-Z0-9-]{8,80}$/.test(req.get('x-request-id')||'')
+    ? req.get('x-request-id')! : randomUUID();
+  res.setHeader('x-request-id',requestId);
   if(err instanceof ZodError){res.status(400).json({error:err.issues.map(e=>e.message).join('; ')});return;}
   if(err instanceof Prisma.PrismaClientKnownRequestError && err.code==='P2002'){res.status(409).json({error:'Já existe um registro com esses dados'});return;}
   if(err instanceof Prisma.PrismaClientKnownRequestError && err.code==='P2034'){res.status(409).json({error:'Conflito de agendamento. Tente novamente'});return;}
-  const e=err as {status?:number,message?:string};
+  const e=err as {status?:number,message?:string,code?:string,name?:string};
   const status=e.status&&e.status>=400&&e.status<600?e.status:500;
-  if(status===500)console.error(err);
-  res.status(status).json({error:status===500?'Erro interno. Tente novamente.':e.message});
+  if(status===500){
+    // Sem cookies, corpos HTTP, chaves de API ou senhas nos logs.
+    console.error('[Vezora API]',JSON.stringify({requestId,route:req.originalUrl.split('?')[0],method:req.method,prismaCode:e.code||null,errorName:e.name||'Error'}));
+    console.error(err);
+  }
+  res.status(status).json({error:status===500?'Erro interno ao consultar os dados. Confira os logs do Heroku.':e.message,requestId});
 });
 
 // No Heroku, somente sinaliza prontidão após verificar acesso ao MongoDB.

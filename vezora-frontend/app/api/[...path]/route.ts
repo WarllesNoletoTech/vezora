@@ -4,6 +4,7 @@
  * cookies de sessao HTTP-only sao mantidos nesse dominio.
  * API_INTERNAL_URL deve ser a URL BASE do backend, SEM /api.
  */
+import { randomUUID } from 'node:crypto';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -40,11 +41,14 @@ async function proxy(request: Request, context: Context): Promise<Response> {
   const destination = new URL(`/api/${path.map(encodeURIComponent).join('/')}`, base);
   destination.search = new URL(request.url).search;
   const headers = new Headers();
+  const requestId = randomUUID();
   // Apenas os cabecalhos necessarios: nao enviar host/cookies de infra Vercel.
-  for (const name of ['content-type', 'accept', 'cookie', 'origin', 'x-request-id']) {
+  for (const name of ['content-type', 'accept', 'cookie', 'origin']) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+
+  headers.set('x-request-id',requestId);
 
   try {
     const upstream = await fetch(destination.toString(), {
@@ -66,7 +70,7 @@ async function proxy(request: Request, context: Context): Promise<Response> {
       return responseError(502, 'O servidor Heroku esta indisponivel. Confira o status do dyno e os logs do backend.');
     }
 
-    const outHeaders = new Headers({ 'Cache-Control': 'no-store' });
+    const outHeaders = new Headers({ 'Cache-Control': 'no-store', 'x-request-id': upstream.headers.get('x-request-id')||requestId });
     for (const name of ['content-type', 'content-disposition', 'location', 'set-cookie']) {
       const value = upstream.headers.get(name);
       if (value) outHeaders.set(name, value);
