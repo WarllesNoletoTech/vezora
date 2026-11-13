@@ -13,4 +13,17 @@ export const metadata: Metadata = {
  icons: { icon: [{ url: '/favicon.ico', sizes: 'any' }, {url:'/favicon-32x32.png',sizes:'32x32',type:'image/png'}], apple: [{url:'/apple-touch-icon.png', sizes:'180x180'}] },
 };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#172737' };
-export default function RootLayout({children}:{children:ReactNode}){return <html lang="pt-BR"><body>{children}</body></html>}
+// Captura antecipadamente o evento de instalação: ele pode acontecer antes da hidratação React.
+// Não inicia uma instalação sem gesto do usuário; apenas disponibiliza o evento ao botão.
+const installEventBridge = `(function(){
+  window.__vezoraInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', function(event) {
+    event.preventDefault();
+    window.__vezoraInstallPrompt = event;
+    window.dispatchEvent(new Event('vezora:install-ready'));
+  });
+  window.addEventListener('appinstalled', function() { window.__vezoraInstallPrompt = null; });
+})();`;
+export default function RootLayout({children}:{children:ReactNode}){
+ return <html lang="pt-BR"><head><script dangerouslySetInnerHTML={{__html:installEventBridge}}/></head><body>{children}</body></html>;
+}

@@ -518,3 +518,16 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(max-width:600px){.vezora-whatsapp{right:12px;bottom:14px;width:54px;height:54px;min-height:0;padding:13px;justify-content:center}.vezora-whatsapp span{display:none}.vezora-firststeps{padding:18px!important}.vezora-steps-header h2{font-size:21px}.vezora-tools{padding:13px}.vezora-dialog{padding:25px 20px}}
 .vezora-agenda-alerts{margin:20px 0}.vezora-alert-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.vezora-alert-grid button{border:1px solid #e0e9ed;border-radius:13px;background:#f9fcfd;display:grid;justify-items:start;gap:7px;padding:16px;text-align:left;color:#294c60}.vezora-alert-grid button:hover{border-color:#8cbbcb;background:#f0f9fc}.vezora-alert-grid strong{font-size:23px;color:#172737}.vezora-alert-grid span{font-size:12px;font-weight:700}
 @media(max-width:600px){.vezora-alert-grid{gap:7px}.vezora-alert-grid button{padding:10px}.vezora-alert-grid strong{font-size:20px}.vezora-alert-grid span{font-size:10px}}
+
+/* Vezora v1.0.5 — CTA de instalação PWA acessível no modal de boas-vindas */
+.vezora-install-dialog{gap:12px}
+.vezora-install-primary{background:#237d92!important;border-color:#237d92!important;color:#fff!important;min-height:49px;font-size:14px}
+.vezora-install-primary:hover:not(:disabled){background:#195f71!important}
+.vezora-install-note{font-size:11px!important;color:#677884!important;line-height:1.5!important;text-align:center}
+.vezora-install-feedback{font-size:12px!important;line-height:1.55!important;background:#e9f4f8;padding:12px;border-radius:10px;color:#214c60!important}
+.vezora-install-guide{padding:15px;background:#eef7fb;border:1px solid #dcecf3;border-radius:12px;font-size:12px;color:#284c5f}
+.vezora-install-guide strong{font-size:13px}
+.vezora-install-guide ol{margin:9px 0;padding-left:20px;display:grid;gap:7px;line-height:1.5}
+.vezora-install-guide p{display:flex;align-items:flex-start;gap:7px;margin:10px 0 0;font-size:11px;line-height:1.45}
+.vezora-install-guide p svg{flex:none;color:#178454}
+@media(max-width:600px){.vezora-install-dialog{gap:10px}.vezora-install-primary{min-height:48px}}
