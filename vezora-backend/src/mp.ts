@@ -1,7 +1,7 @@
-import crypto from 'node:crypto';
 import { db } from './db';
 import { decrypt, encrypt } from './crypto';
 import { env } from './env';
+import { verifyMercadoPagoSignature } from './webhookSignature';
 
 export function mpReady() { return Boolean(env.MP_CLIENT_ID && env.MP_CLIENT_SECRET && env.MP_REDIRECT_URI && env.MP_WEBHOOK_SECRET && env.API_PUBLIC_URL); }
 async function mpRequest<T>(path: string, method: string, token: string | null, body?: unknown): Promise<T> {
@@ -25,7 +25,7 @@ export async function exchangeCode(code: string, verifier: string) {
 export async function sellerToken(tenantId: string) {
   const account = await db.paymentAccount.findUnique({where:{tenantId}});
   if (!account) throw new Error('Mercado Pago não conectado');
-  if (account.expiresAt.getTime() > Date.now() + 7 * 24 * 3600_000) return decrypt(account.encryptedToken);
+  if (account.expiresAt.getTime() > Date.now() + 5 * 60_000) return decrypt(account.encryptedToken);
   const refreshed = await mpRequest<TokenResult>('/oauth/token', 'POST', null, {
     grant_type: 'refresh_token', client_id: env.MP_CLIENT_ID,
     client_secret: env.MP_CLIENT_SECRET, refresh_token: decrypt(account.encryptedRefresh)
@@ -46,13 +46,5 @@ export async function getPayment(tenantId: string, paymentId: string) {
   return mpRequest<{id: number; status: string; external_reference: string; transaction_amount: number; collector_id: number}>(`/v1/payments/${paymentId}`, 'GET', token);
 }
 export function validMpWebhook(xSignature: string, requestId: string, dataId: string) {
-  if (!env.MP_WEBHOOK_SECRET || !xSignature || !requestId || !dataId) return false;
-  const values = Object.fromEntries(xSignature.split(',').map(x => x.trim().split('=')));
-  if (!values.ts || !values.v1 || !/^\d+$/.test(values.ts)) return false;
-  // Protege contra replay de eventos antigos, fora de uma janela de 10 minutos.
-  if (Math.abs(Date.now() / 1000 - Number(values.ts)) > 600) return false;
-  // Template oficial: id:{data.id};request-id:{x-request-id};ts:{ts};
-  const manifest = `id:${dataId.toLowerCase()};request-id:${requestId};ts:${values.ts};`;
-  const hash = crypto.createHmac('sha256', env.MP_WEBHOOK_SECRET).update(manifest).digest('hex');
-  return values.v1.length === hash.length && crypto.timingSafeEqual(Buffer.from(values.v1), Buffer.from(hash));
+  return verifyMercadoPagoSignature(xSignature, requestId, dataId, env.MP_WEBHOOK_SECRET);
 }

@@ -1,3 +1,6 @@
+## 0.4.0
+- v0.4: validação segura de PATCH, readiness de pagamentos, verificação de webhooks em s/ms, refresh OAuth e desconexão MP protegida.
+
 # Vezora v0.3.0 — revisão de UI e correção do backend
 
 - Backend: usa MONGODB_URI em Prisma, normaliza WEB_URL, permite iniciar sem configuração Mercado Pago.

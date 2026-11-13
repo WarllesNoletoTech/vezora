@@ -71,7 +71,7 @@ async function proxy(request: Request, context: Context): Promise<Response> {
       const value = upstream.headers.get(name);
       if (value) outHeaders.set(name, value);
     }
-    return new Response(request.method === 'HEAD' ? null : await upstream.arrayBuffer(), {
+    return new Response(request.method === 'HEAD' || [204, 205, 304].includes(upstream.status) ? null : await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: outHeaders,
     });

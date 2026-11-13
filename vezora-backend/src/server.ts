@@ -37,7 +37,7 @@ function fail(status: number, message: string): never {
 }
 function auth(req: Authed, _res: Response, next: NextFunction) {
   try {
-    const payload = jwt.verify(req.cookies?.vezora_session || '',env.JWT_SECRET) as jwt.JwtPayload;
+    const payload = jwt.verify(req.cookies?.vezora_session || '',env.JWT_SECRET,{issuer:'vezora'}) as jwt.JwtPayload;
     if (typeof payload.sub !== 'string') fail(401,'Sessão inválida');
     req.userId = payload.sub;
     next();
@@ -99,27 +99,31 @@ app.patch('/api/tenant',auth,wrap(async(req,res)=>{
   res.json(await db.tenant.update({where:{id:tenant.id},data:update}));
 }));
 
-const serviceInput=z.object({name,description:z.string().max(500).default(''),priceCents:z.number().int().min(0).max(10_000_000),durationMin:z.number().int().min(15).max(720),depositMode:z.nativeEnum(DepositMode).default('NONE'),depositValue:z.number().int().min(0).max(10_000_000).default(0),active:z.boolean().default(true)}).refine(v=>v.depositMode!=='PERCENT'||v.depositValue<=100,{message:'Percentual não pode superar 100%'}).refine(v=>v.depositMode!=='FIXED'||v.depositValue<=v.priceCents,{message:'Sinal maior que o valor do serviço'});
+const serviceFields=z.object({name,description:z.string().max(500).default(''),priceCents:z.number().int().min(0).max(10_000_000),durationMin:z.number().int().min(15).max(720),depositMode:z.nativeEnum(DepositMode).default('NONE'),depositValue:z.number().int().min(0).max(10_000_000).default(0),active:z.boolean().default(true)});
+const serviceInput=serviceFields.refine(v=>v.depositMode!=='PERCENT'||v.depositValue<=100,{message:'Percentual não pode superar 100%'}).refine(v=>v.depositMode!=='FIXED'||v.depositValue<=v.priceCents,{message:'Sinal maior que o valor do serviço'});
 app.get('/api/services',auth,wrap(async(req,res)=>{const t=await myTenant(req);res.json(await db.service.findMany({where:{tenantId:t.id},orderBy:{createdAt:'desc'}}));}));
 app.post('/api/services',auth,wrap(async(req,res)=>{const t=await myTenant(req);res.status(201).json(await db.service.create({data:{...serviceInput.parse(req.body),tenantId:t.id}}));}));
 app.patch('/api/services/:id',auth,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const old=await db.service.findFirst({where:{tenantId:t.id,id:String(req.params.id)}});
   if(!old) fail(404,'Serviço não encontrado');
-  const body=serviceInput.parse({...old,...req.body});
+  const changes=serviceFields.partial().strict().parse(req.body);
+  const body=serviceInput.parse({...old,...changes});
   res.json(await db.service.update({where:{id:old!.id},data:body}));
 }));
 const timePattern=/^([01]\d|2[0-3]):[0-5]\d$/;
 const workday=z.union([z.null(),z.tuple([z.string().regex(timePattern),z.string().regex(timePattern)]).refine(v=>v[1]>v[0],'Intervalo inválido')]);
 const scheduleSchema=z.record(z.enum(['0','1','2','3','4','5','6']),workday);
 const proInput=z.object({name,photoUrl:cleanUrl.default(''),schedule:scheduleSchema.default(DEFAULT_SCHEDULE),active:z.boolean().default(true)});
+const proPatch=proInput.partial().strict();
 app.get('/api/professionals',auth,wrap(async(req,res)=>{const t=await myTenant(req);res.json(await db.professional.findMany({where:{tenantId:t.id},orderBy:{name:'asc'}}));}));
 app.post('/api/professionals',auth,wrap(async(req,res)=>{const t=await myTenant(req);const v=proInput.parse(req.body);res.status(201).json(await db.professional.create({data:{...v,tenantId:t.id}}));}));
 app.patch('/api/professionals/:id',auth,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const pro=await db.professional.findFirst({where:{id:String(req.params.id),tenantId:t.id}});
   if(!pro) fail(404,'Profissional não encontrado');
-  const v=proInput.parse({...pro,...req.body});
+  const changes=proPatch.parse(req.body);
+  const v=proInput.parse({...pro,...changes});
   res.json(await db.professional.update({where:{id:pro!.id},data:v}));
 }));
 app.get('/api/bookings',auth,wrap(async(req,res)=>{
@@ -137,9 +141,10 @@ app.patch('/api/bookings/:id',auth,wrap(async(req,res)=>{
 }));
 
 app.get('/api/public/:slug',wrap(async(req,res)=>{
-  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,primaryColor:true,secondaryColor:true,timezone:true,services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
+  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,primaryColor:true,secondaryColor:true,timezone:true,paymentAccount:{select:{id:true}},services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
   if(!t) fail(404,'Estabelecimento não encontrado');
-  res.json(t);
+  const {paymentAccount,...publicData}=t;
+  res.json({...publicData,paymentAvailable:!!paymentAccount&&mpReady()});
 }));
 app.get('/api/public/:slug/availability',wrap(async(req,res)=>{
   const params=z.object({serviceId:z.string().uuid(),professionalId:z.string().uuid(),date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(req.query);
@@ -172,6 +177,7 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
   const startAt=localSlot(p.date,p.time,tenant!.timezone);
   const endAt=DateTime.fromJSDate(startAt).plus({minutes:service!.durationMin}).toJSDate();
   const deposit=depositCents(service!.priceCents,service!.depositMode,service!.depositValue);
+  if(deposit>0 && !mpReady()) fail(503,'Pagamentos de sinal ainda não estão configurados. Contate o estabelecimento.');
   if(deposit>0 && !(await db.paymentAccount.findUnique({where:{tenantId:tenant!.id}}))) fail(409,'Este estabelecimento ainda não habilitou o pagamento de sinal');
   const now=new Date();
   const today=DateTime.now().setZone(tenant!.timezone).startOf('day');
@@ -224,7 +230,7 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
   }
 }));
 app.get('/api/booking-status/:id',wrap(async(req,res)=>{
-  const b=await db.booking.findUnique({where:{id:String(req.params.id)},select:{status:true,startAt:true,depositCents:true,paymentStatus:true,checkoutUrl:true,expiresAt:true}});
+  const b=await db.booking.findUnique({where:{id:String(req.params.id)},select:{status:true,startAt:true,depositCents:true,paymentStatus:true,checkoutUrl:true,expiresAt:true,tenant:{select:{timezone:true}}}});
   if(!b) fail(404,'Reserva não encontrada');
   const isExpired=b.status==='PENDING_PAYMENT'&&!!b.expiresAt&&b.expiresAt<new Date();
   res.json({...b,status:isExpired?'EXPIRED':b.status,checkoutUrl:isExpired?null:b.checkoutUrl});
@@ -258,6 +264,13 @@ app.get('/api/payments/callback',wrap(async(req,res)=>{
 }));
 app.delete('/api/payments/connect',auth,wrap(async(req,res)=>{
   const t=await myTenant(req);
+  // Não descartar a credencial enquanto uma transação recente pode
+  // precisar de confirmação automática ou de conciliação manual.
+  const unsettled=await db.booking.count({where:{tenantId:t.id,OR:[
+    {status:'PENDING_PAYMENT',createdAt:{gte:new Date(Date.now()-24*60*60_000)}},
+    {status:'NEEDS_REVIEW'}
+  ]}});
+  if(unsettled>0) fail(409,'Existem pagamentos recentes pendentes ou em revisão. Resolva-os antes de desconectar o Mercado Pago.');
   await db.paymentAccount.deleteMany({where:{tenantId:t.id}});
   res.json({ok:true});
 }));
