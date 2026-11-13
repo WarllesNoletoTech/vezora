@@ -24,17 +24,38 @@ type MPSubscriptionPayment={id:number|string;status:string;external_reference:st
 async function mpAPI<T>(path:string,method:'GET'|'POST',body?:unknown,idempotencyKey?:string): Promise<T> {
   if(!env.VEZORA_MP_ACCESS_TOKEN) throw Object.assign(new Error('Cobrança Pix do Vezora não configurada'),{status:503});
   const result=await fetch('https://api.mercadopago.com'+path,{method,headers:{Authorization:`Bearer ${env.VEZORA_MP_ACCESS_TOKEN}`,'Content-Type':'application/json',...(idempotencyKey?{'X-Idempotency-Key':idempotencyKey}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});
-  if(!result.ok) {console.error('Mercado Pago plataforma HTTP',result.status);throw Object.assign(new Error('Não foi possível gerar/consultar Pix agora'),{status:502});}
+  if(!result.ok) {
+    // Logar somente códigos de diagnóstico do provedor. Não registrar token, CPF, e-mail ou payload da cobrança.
+    let diagnostic: unknown = null;
+    try {
+      const payload: unknown = await result.json();
+      if (payload && typeof payload === 'object') {
+        const info = payload as {error?:unknown; status?:unknown; cause?:unknown};
+        const causeCodes = Array.isArray(info.cause)
+          ? info.cause.slice(0, 5).map((c: unknown) => c && typeof c === 'object' ? (c as {code?:unknown}).code : undefined)
+            .filter((c:unknown) => typeof c === 'string' || typeof c === 'number')
+          : [];
+        diagnostic = {
+          errorCode: typeof info.error === 'string' ? info.error.slice(0,80) : undefined,
+          causeCodes
+        };
+      }
+    } catch { /* O provedor pode retornar resposta não JSON. */ }
+    console.error('Mercado Pago plataforma HTTP', result.status, diagnostic);
+    throw Object.assign(new Error('Não foi possível gerar/consultar Pix agora'),{status:502});
+  }
   return await result.json() as T;
 }
 export async function paymentFromProvider(id:string) {return mpAPI<MPSubscriptionPayment>(`/v1/payments/${encodeURIComponent(id)}`,'GET');}
-export async function generatePix(id:string,payerEmail:string,amountCents:number,document:string) {
+export async function generatePix(id:string,payerEmail:string,amountCents:number,document:string,expiresAt:Date) {
   return mpAPI<MPSubscriptionPayment>('/v1/payments','POST',{
     transaction_amount:amountCents/100,
     description:'Assinatura Vezora - 30 dias',payment_method_id:'pix',
     external_reference:id,payer:{email:payerEmail,identification:{type:document.length===11?'CPF':'CNPJ',number:document}},
     notification_url:`${env.API_PUBLIC_URL}/api/billing/webhook`,
-    date_of_expiration:new Date(Date.now()+30*60000).toISOString()
+    // O Mercado Pago exige pelo menos 30 minutos no momento em que recebe a requisição.
+    // Usar o vencimento local da cobrança (45 min) evita rejeição por latência de rede.
+    date_of_expiration:expiresAt.toISOString()
   },id);
 }
 export function verifyBillingWebhook(signature:string,requestId:string,id:string) {

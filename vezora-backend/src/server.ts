@@ -322,9 +322,14 @@ app.post('/api/billing/pix',auth,wrap(async(req,res)=>{
   // A cobrança guarda o valor escolhido pelo admin no momento da emissão;
   // uma alteração posterior nao muda os valores de uma cobrança já emitida.
   let invoice=await db.subscriptionPayment.findFirst({where:{tenantId:tenant.id,status:'PENDING',amountCents:settings.monthlyPriceCents,expiresAt:{gt:new Date(Date.now()+60000)}},orderBy:{createdAt:'desc'}});
-  if(!invoice)invoice=await db.subscriptionPayment.create({data:{tenantId:tenant.id,amountCents:settings.monthlyPriceCents,expiresAt:new Date(Date.now()+30*60000)}});
+  // Rascunhos legados podem estar perto de vencer; não solicitar um Pix ao provedor
+  // com validade abaixo do mínimo de 30 minutos documentado pelo Mercado Pago.
+  if(invoice && (!invoice.mpPaymentId || !invoice.qrCode) && invoice.expiresAt.getTime()-Date.now()<31*60000){
+    invoice=null;
+  }
+  if(!invoice)invoice=await db.subscriptionPayment.create({data:{tenantId:tenant.id,amountCents:settings.monthlyPriceCents,expiresAt:new Date(Date.now()+45*60000)}});
   if(!invoice.mpPaymentId||!invoice.qrCode){
-    const payment=await generatePix(invoice.id,user!.email,invoice.amountCents,data.document);
+    const payment=await generatePix(invoice.id,user!.email,invoice.amountCents,data.document,invoice.expiresAt);
     const tx=payment.point_of_interaction?.transaction_data;
     if(!payment.id||!tx?.qr_code) fail(502,'Mercado Pago não retornou o Pix. Tente novamente.');
     invoice=await db.subscriptionPayment.update({where:{id:invoice.id},data:{mpPaymentId:String(payment.id),qrCode:tx.qr_code,qrCodeBase64:tx.qr_code_base64||'',ticketUrl:tx.ticket_url||''}});
