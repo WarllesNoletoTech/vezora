@@ -77,7 +77,7 @@ function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
 const accountData = z.object({name,phone,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
-app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'0.9.5'});});
+app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'0.9.8'});});
 app.get('/api/platform/public-settings',wrap(async(_req,res)=>{const s=await platformSettings();res.json({trialDays:s.trialDays});}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
@@ -182,7 +182,6 @@ app.patch('/api/professionals/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   const v=proInput.parse({...pro,...changes});
   res.json(await db.professional.update({where:{id:pro!.id},data:v}));
 }));
-app.use('/api',auth,subscriptionGuard,financialRoutes);
 app.get('/api/bookings',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
   const rows=await db.booking.findMany({where:{tenantId:t.id,startAt:{gte:DateTime.utc().minus({days:30}).toJSDate()}},include:{service:{select:{name:true,priceCents:true}},professional:{select:{name:true}},receipts:{orderBy:{createdAt:'desc'}}},orderBy:{startAt:'asc'},take:250});
@@ -463,6 +462,11 @@ app.use('/api/admin',auth,(req:Authed,_res,next)=>{
     next();
   }).catch(next);
 },adminRouter);
+
+// Rotas financeiras do lojista precisam de sessão e assinatura ativa.
+// Monte este router DEPOIS dos callbacks OAuth, webhooks e APIs públicas.
+// Se montado antes, auth bloqueia /api/payments/callback e /api/payments/webhook.
+app.use('/api',auth,subscriptionGuard,financialRoutes);
 
 app.use('/api',(_req,res)=>res.status(404).json({error:'Rota da API nao encontrada. Confirme a versao do backend implantada no Heroku.'}));
 
