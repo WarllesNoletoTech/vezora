@@ -1,34 +1,56 @@
-'use client';
-import {useEffect,useState} from 'react';
-import type {CSSProperties,FormEvent} from 'react';
-import {useParams} from 'next/navigation';
-import Link from 'next/link';
-import {ArrowLeft,ArrowRight,CalendarDays,Check,CheckCircle2,Clock3,Instagram,MapPin,MessageCircle,ShieldCheck,Sparkles,UserRound} from 'lucide-react';
-import {api,brl,whatsappUrl,type Professional,type Service,type Tenant} from '@/lib/api';
-import BusinessMotif from '@/components/BusinessMotif';
+import type {Metadata} from 'next';
+import {notFound} from 'next/navigation';
+import PublicBooking from '@/components/PublicBookingClient';
 import {businessTheme} from '@/lib/business';
-type PublicTenant=Tenant&{services:Service[];professionals:Professional[];paymentAvailable:boolean;bookingEnabled:boolean};
-function localDate(offset:number,timeZone:string){const d=new Date(Date.now()+offset*86400000);const parts=new Intl.DateTimeFormat('en-US',{year:'numeric',month:'2-digit',day:'2-digit',timeZone}).formatToParts(d);const pick=(type:string)=>parts.find(p=>p.type===type)?.value||'';return `${pick('year')}-${pick('month')}-${pick('day')}`;}
-function prettyDay(d:string){return new Date(`${d}T12:00:00Z`).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',timeZone:'UTC'}).replace('.','');}
-function dateOptions(zone:string){const items:string[]=[];for(let i=0;i<21;i++){const d=localDate(i,zone);if(!items.includes(d))items.push(d)}return items;}
-export default function PublicBooking(){const {slug}=useParams<{slug:string}>();const [t,T]=useState<PublicTenant|null>(null);const [err,E]=useState(''),[busy,B]=useState(false),[step,S]=useState(1);
- const [service,V]=useState(''),[pro,P]=useState(''),[date,D]=useState(''),[time,H]=useState(''),[slots,Q]=useState<string[]>([]),[loadingTimes,LT]=useState(false);
- const [slotError,SE]=useState('');const [client,C]=useState({clientName:'',clientPhone:''});const [done,F]=useState<{id:string;status:string;checkoutUrl:string|null}|null>(null);
- useEffect(()=>{api<PublicTenant>(`/public/${slug}`).then(v=>{T(v);if(v.services.length)V(v.services[0].id);if(v.professionals.length)P(v.professionals[0].id);D(localDate(0,v.timezone))}).catch(e=>E((e as Error).message))},[slug]);
- useEffect(()=>{if(!t||!service||!pro||!date)return;let ignore=false;LT(true);H('');Q([]);SE('');api<{slots:string[]}>(`/public/${slug}/availability?serviceId=${service}&professionalId=${pro}&date=${date}`).then(v=>{if(!ignore)Q(v.slots)}).catch(()=>{if(!ignore){Q([]);SE('Não foi possível consultar os horários. Tente escolher outra data ou recarregar a página.') }}).finally(()=>{if(!ignore)LT(false)});return()=>{ignore=true}},[t,service,pro,date,slug]);
- const chosen=t?.services.find(v=>v.id===service);
- const chosenPro=t?.professionals.find(p=>p.id===pro);
- const amount=chosen?.depositMode==='PERCENT'?Math.round(chosen.priceCents*chosen.depositValue/100):chosen?.depositMode==='FIXED'?chosen.depositValue:0;
- const whatsapp=t?.whatsapp||'';
- const business=businessTheme(t?.businessType);
- async function submit(e:FormEvent){e.preventDefault();B(true);E('');try{const v=await api<{id:string;status:string;checkoutUrl:string|null}>(`/public/${slug}/bookings`,{method:'POST',body:JSON.stringify({serviceId:service,professionalId:pro,date,time,...client})});F(v);S(4);if(v.checkoutUrl)window.location.assign(v.checkoutUrl)}catch(e){E((e as Error).message);S(3)}finally{B(false)}}
- if(!t)return <div className="public-loading">{!err&&<div className="spinner"/>}<p>{err||'Carregando estabelecimento...'}</p>{err&&<button className="btn btn-outline" onClick={()=>window.location.reload()}>Tentar novamente</button>}<Link href="/">Voltar para Vezora</Link></div>;
- return <main className="public-site" data-business={t.businessType||'OUTROS'} style={{'--tenant-primary':t.primaryColor,'--tenant-secondary':t.secondaryColor} as CSSProperties}>
- <div className="public-hero" style={{backgroundImage:t.coverUrl?`linear-gradient(130deg,#17151bb3,#17151b73),url(${t.coverUrl})`:undefined}}><div className="public-hero-inner"><div className="public-brand-hero"><div className="public-logo">{t.logoUrl?<img src={t.logoUrl} alt={`Logotipo de ${t.name}`}/>:<BusinessMotif type={t.businessType}/>}</div><div className="public-title"><span className="public-eyebrow">{business.label.toUpperCase()} · RESERVAS ONLINE</span><h1>{t.name}</h1><h2>{business.headline}</h2><p>{t.bio||business.subtitle}</p></div></div><div className="public-hero-motif"><BusinessMotif type={t.businessType} large/></div><div className="public-contact">{t.address&&<span><MapPin size={14}/>{t.address}</span>}{t.instagram&&<span><Instagram size={14}/>{t.instagram}</span>}{whatsapp&&<a href={whatsappUrl(whatsapp,`Olá! Vim pela página de agendamentos de ${t.name}.`)} target="_blank" rel="noreferrer"><MessageCircle size={15}/> Falar pelo WhatsApp</a>}</div></div></div>
- <div className="public-content">{!t.bookingEnabled?<div className="booking-panel" role="status"><h2>Agendamentos temporariamente indisponíveis</h2><p>Este estabelecimento está com a agenda online pausada. Entre em contato diretamente para mais informações.</p>{whatsapp&&<a className="btn public-btn" href={whatsappUrl(whatsapp,`Olá! Vim da página de ${t.name}.`)} target="_blank" rel="noreferrer">Falar no WhatsApp</a>}</div>:<><div className="public-stepper">{[['1','Serviço'],['2','Data e horário'],['3','Seus dados']].map(([n,label])=><div className={`public-step ${step>=Number(n)?'on':''}`} key={n}><span>{step>Number(n)?<Check size={15}/>:n}</span><b>{label}</b></div>)}</div>
- {step===1&&<div className="booking-panel"><div className="booking-panel-title"><div><span className="overline">PASSO 01</span><h2>Escolha seu serviço</h2><p>Escolha o serviço que deseja agendar.</p></div></div>{t.services.length===0?<div className="empty-state">Este estabelecimento ainda não cadastrou serviços.</div>:<div className="booking-services">{t.services.map(s=><button key={s.id} onClick={()=>V(s.id)} className={`booking-service-option ${service===s.id?'active':''}`}><div className="service-option-icon"><BusinessMotif type={t.businessType}/></div><div className="service-option-info"><strong>{s.name}</strong><span>{s.description||'Atendimento personalizado'}</span><small><Clock3 size={13}/>{s.durationMin} minutos</small></div><div className="service-option-price"><b>{brl(s.priceCents)}</b><span className="radio-dot">{service===s.id&&<Check size={13}/>}</span></div></button>)}</div>}{t.services.length>0&&!!amount&&!t.paymentAvailable&&<div className="alert info" role="status">Este serviço exige um sinal, mas o estabelecimento ainda não habilitou o recebimento online. Consulte o atendimento pelo WhatsApp ou escolha outro serviço.</div>}{t.services.length>0&&<button className="btn public-btn" disabled={t.professionals.length===0||(!!amount&&!t.paymentAvailable)} onClick={()=>S(2)}>Continuar <ArrowRight size={18}/></button>}</div>}
- {step===2&&<div className="booking-panel"><div className="booking-panel-title"><div><span className="overline">PASSO 02</span><h2>Encontre seu horário</h2><p>Escolha quem irá te atender e um horário livre.</p></div></div><label className="public-field">Profissional<select value={pro} onChange={e=>P(e.target.value)}>{t.professionals.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><div className="public-field"><b>Dia do atendimento</b><div className="date-scroll">{dateOptions(t.timezone).map(d=><button key={d} className={date===d?'chosen':''} onClick={()=>D(d)}>{prettyDay(d)}</button>)}</div></div><div className="public-field"><b>Horários disponíveis</b>{slotError&&<div className="alert error" role="alert">{slotError}</div>}{loadingTimes?<p className="muted">Consultando horários...</p>:slots.length?<div className="slot-grid">{slots.map(s=><button key={s} className={time===s?'chosen':''} onClick={()=>H(s)}>{s}</button>)}</div>:<div className="no-slots"><CalendarDays size={19}/> {slotError?'Não foi possível consultar horários.':'Nenhum horário livre nesse dia. Escolha outra data.'}</div>}</div><div className="public-form-actions"><button className="btn btn-ghost" onClick={()=>S(1)}><ArrowLeft size={16}/> Voltar</button><button className="btn public-btn" disabled={!time||loadingTimes||!!slotError} onClick={()=>S(3)}>Continuar <ArrowRight size={17}/></button></div></div>}
- {step===3&&<div className="booking-panel"><div className="booking-panel-title"><div><span className="overline">PASSO 03</span><h2>Está quase pronto!</h2><p>Informe seus dados para finalizar o agendamento.</p></div></div><div className="booking-summary"><div><span>Serviço</span><strong>{chosen?.name}</strong></div><div><span>Profissional</span><strong>{chosenPro?.name}</strong></div><div><span>Data e horário</span><strong>{prettyDay(date)} às {time}</strong></div><div><span>Preço do serviço</span><strong>{brl(chosen?.priceCents||0)}</strong></div>{!!amount&&<div><span>Sinal online</span><strong>{brl(amount)}</strong></div>}</div><form onSubmit={submit} className="form-grid"><label>Seu nome completo<input autoComplete="name" required minLength={2} value={client.clientName} onChange={e=>C({...client,clientName:e.target.value})} placeholder="Como podemos chamar você?"/></label><label>Seu WhatsApp com DDD<input type="tel" inputMode="tel" autoComplete="tel" required minLength={10} value={client.clientPhone} onChange={e=>C({...client,clientPhone:e.target.value})} placeholder="(99) 99999-9999"/></label>{err&&<div className="alert error" role="alert">{err}</div>}<div className="booking-secure"><ShieldCheck size={17}/>{amount?'Você será direcionado ao Mercado Pago para pagar o sinal via Pix ou cartão.':'Sua reserva será confirmada gratuitamente.'}</div><div className="public-form-actions"><button type="button" className="btn btn-ghost" onClick={()=>S(2)}><ArrowLeft size={16}/> Voltar</button><button disabled={busy} className="btn public-btn" type="submit">{busy?'Reservando...':amount?'Reservar e pagar sinal':'Confirmar agendamento'} <ArrowRight size={17}/></button></div></form></div>}
- {step===4&&done&&<div className="booking-panel booking-done"><CheckCircle2 size={56}/><h2>{done.checkoutUrl?'Reserva aguardando pagamento':'Horário reservado!'}</h2><p>{done.checkoutUrl?'Finalize o sinal no Mercado Pago. A reserva só será confirmada após a aprovação do pagamento.':'Seu agendamento foi confirmado. Aguardamos você!'}</p><Link className="btn public-btn" href={`/agendamento/${done.id}`}>Acompanhar agendamento <ArrowRight size={17}/></Link>{done.checkoutUrl&&<a href={done.checkoutUrl} className="btn btn-outline" target="_blank" rel="noreferrer">Ir para o Mercado Pago <ArrowRight size={17}/></a>}</div>}
- </>} </div><footer className="public-footer">Agendamento realizado com <Link href="/">vezora<span>.</span></Link></footer></main>
+import {SITE_URL,publicTenant,isIndexable,metaDescription} from '@/lib/seo-server';
+
+export const dynamic='force-dynamic';
+type Props={params:Promise<{slug:string}>};
+
+export async function generateMetadata({params}:Props):Promise<Metadata>{
+ const {slug}=await params;
+ const t=await publicTenant(slug);
+ if(!t)return {title:'Estabelecimento não encontrado',robots:{index:false,follow:false}};
+ const canonical=SITE_URL+'/'+encodeURIComponent(t.slug);
+ const title=`${t.name} — ${businessTheme(t.businessType).label} | Agendamento online`;
+ const description=metaDescription(t);
+ const visible=isIndexable(t);
+ const images=t.coverUrl?[{url:t.coverUrl,alt:`Capa de ${t.name}`}]:[{url:'/og-vezora.png',alt:'Vezora — Agendamento online'}];
+ return {
+  title,description,alternates:{canonical},
+  robots:visible?{index:true,follow:true}:{index:false,follow:false},
+  openGraph:{type:'website',locale:'pt_BR',siteName:'Vezora',title,description,url:canonical,images},
+  twitter:{card:'summary_large_image',title,description,images:images.map(i=>i.url)}
+ };
+}
+
+export default async function PublicPage({params}:Props){
+ const {slug}=await params;
+ const t=await publicTenant(slug);
+ if(!t)notFound();
+ const canonical=SITE_URL+'/'+encodeURIComponent(t.slug);
+ const data={
+  '@context':'https://schema.org',
+  '@type':t.businessType==='BARBEARIA'||t.businessType==='CABELEIREIRO'?'HairSalon': ['SALAO_BELEZA','NAIL_DESIGNER','MANICURE_PEDICURE','LASH_DESIGNER','SOBRANCELHAS','ESTETICA','MAQUIAGEM','DEPILACAO'].includes(t.businessType||'')?'BeautySalon':'LocalBusiness',
+  '@id':canonical+'#estabelecimento',
+  name:t.name,url:canonical,
+  description:metaDescription(t),
+  ...(t.logoUrl?{logo:t.logoUrl}:{}),
+  ...(t.coverUrl?{image:t.coverUrl}:{}),
+  ...(t.whatsapp?{telephone:t.whatsapp}:{}),
+  ...(t.address?{address:{'@type':'PostalAddress',streetAddress:t.address,addressCountry:'BR'}}:{}),
+  ...(isIndexable(t)&&t.services.length?{
+    hasOfferCatalog:{
+      '@type':'OfferCatalog',name:'Serviços disponíveis',
+      itemListElement:t.services.filter(s=>s.active!==false).slice(0,60).map(s=>({
+        '@type':'OfferCatalog',name:s.name,
+        itemListElement:[{'@type':'Offer',price:(s.priceCents/100).toFixed(2),priceCurrency:'BRL',itemOffered:{'@type':'Service',name:s.name,...(s.description?{description:s.description}:{})}}]
+      }))
+    }
+  }:{})
+ };
+ return <>
+  {isIndexable(t)&&<script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(data).replace(/</g,'\\u003c')}}/>}
+  <PublicBooking key={t.slug} slug={t.slug} initialTenant={t}/>
+ </>;
 }

@@ -1,0 +1,20 @@
+name: Compilação do backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Gerar cliente Prisma e validar TypeScript
+        run: npm run build

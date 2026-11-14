@@ -69,7 +69,7 @@ async function myTenant(req: Authed) {
 const cleanUrl = z.union([z.literal(''), z.string().url().max(600).refine(v=>v.startsWith('https://')||(env.NODE_ENV!=='production'&&v.startsWith('http://localhost:')),{message:'Informe uma URL HTTPS válida'})]);
 const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 const name = z.string().trim().min(2).max(90);
-const reservedSlugs=new Set(['admin','api','painel','cadastro','entrar','assinatura','agendamento','atualizar-cadastro','favicon.ico']);
+const reservedSlugs=new Set(['admin','api','painel','cadastro','entrar','assinatura','agendamento','atualizar-cadastro','favicon.ico','solucoes','sitemap.xml','robots.txt']);
 const slug = z.string().trim().min(3).max(45).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).refine(v=>!reservedSlugs.has(v),{message:'Este link de agendamento está reservado'});
 const phone = z.string().transform(phoneDigits).pipe(z.string().min(10).max(13));
 const businessTypeSchema=z.nativeEnum(BusinessType);
@@ -274,6 +274,30 @@ app.patch('/api/bookings/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
   const updated=await db.booking.update({where:{id:b!.id},data:{status}});
   if(status==='CANCELLED')void notifyBooking(b!.id,'cancelled').catch(()=>{});
   res.json(updated);
+}));
+
+/**
+ * Sitemap público: apenas slugs e datas, nunca IDs de usuários, telefones
+ * ou dados financeiros. Resultado paginado para evitar carregar todos os lojistas.
+ */
+app.get('/api/seo/tenants',wrap(async(req,res)=>{
+  const {page}=z.object({page:z.coerce.number().int().min(1).max(1000).default(1)}).parse(req.query);
+  const take=250;
+  const items=await db.tenant.findMany({
+    where:{OR:[{archivedAt:null},{archivedAt:{isSet:false}}]},
+    orderBy:[{createdAt:'asc'},{id:'asc'}],
+    skip:(page-1)*take,take,
+    select:{
+      slug:true,name:true,businessType:true,createdAt:true,
+      trialStartsAt:true,trialDays:true,trialExtensionDays:true,
+      subscriptionEndsAt:true,suspendedAt:true,
+      services:{where:{active:true},take:1,select:{id:true}}
+    }
+  });
+  const tenants=items.filter(t=>t.name.trim().length>=3&&t.businessType&&t.services.length>0&&hasAccess(t))
+    .map(t=>({slug:t.slug,lastModified:t.createdAt.toISOString()}));
+  res.setHeader('Cache-Control','public, max-age=60, s-maxage=300');
+  res.json({tenants,hasMore:items.length===take});
 }));
 
 app.get('/api/public/:slug',wrap(async(req,res)=>{
