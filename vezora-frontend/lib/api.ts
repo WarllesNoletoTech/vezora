@@ -37,7 +37,7 @@ export type Service={id:string;name:string;description:string;priceCents:number;
 export type Professional={id:string;name:string;photoUrl:string;active:boolean;schedule:Record<string,[string,string]|null>;role:'OWNER'|'EMPLOYEE'|'CONTRACTOR';salaryEnabled:boolean;salaryCents:number;commissionMode:'NONE'|'PERCENT'|'FIXED';commissionValue:number};
 import type {BusinessType} from '@/lib/business';
 export type Tenant={businessType:BusinessType|null;onboardingCompletedAt?:string|null;id:string;name:string;slug:string;bio:string;whatsapp:string;instagram:string;address:string;logoUrl:string;coverUrl:string;primaryColor:string;secondaryColor:string;timezone:string};
-export type Booking={id:string;clientName:string;clientPhone:string;startAt:string;endAt:string;status:string;depositCents:number;paymentStatus:string|null;service:{name:string;priceCents:number};professional:{name:string}};
+export type Booking={id:string;clientName:string;clientPhone:string;startAt:string;endAt:string;status:string;depositCents:number;paymentStatus:string|null;depositPaidAt?:string|null;checkoutUrl?:string|null;expiresAt?:string|null;service:{name:string;priceCents:number};professional:{name:string}};
 
 /** Envia somente os campos editáveis; chaves internas do MongoDB são imutáveis. */
 export function editableTenant(t: Tenant) {

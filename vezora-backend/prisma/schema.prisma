@@ -13,6 +13,7 @@ model User {
   phone        String?  // null em contas antigas; exige atualizacao no proximo acesso
   role         UserRole? // null = LOJISTA legado; somente CLI promove SUPERADMIN
   email        String   @unique
+  deletedAt    DateTime? // conta arquivada, sem acesso
   passwordHash String
   createdAt    DateTime @default(now())
   tenant       Tenant?
@@ -22,6 +23,7 @@ model Tenant {
   id             String         @id @default(uuid()) @map("_id")
   ownerId        String         @unique
   owner          User           @relation(fields: [ownerId], references: [id])
+  archivedAt     DateTime? // cadastro arquivado sem eliminar historico financeiro
   name           String
   slug           String         @unique
   bio            String         @default("")

@@ -109,6 +109,20 @@ export default function AdminPage(){
   if(suspended&&!window.confirm('Suspender este estabelecimento? O agendamento público ficará bloqueado.'))return;
   void mutation(()=>api(`/admin/tenants/${t.id}/suspension`,{method:'PATCH',body:JSON.stringify({suspended,reason})}),suspended?'Estabelecimento suspenso.':'Estabelecimento reativado.');
  }
+ async function archiveTenant(t:TenantRow){
+  const confirmed=window.prompt(`Para arquivar, digite exatamente o link do estabelecimento: ${t.slug}`);
+  if(confirmed===null)return;
+  if(confirmed!==t.slug){E('Link digitado não corresponde ao estabelecimento.');return;}
+  const reason=window.prompt('Motivo do arquivamento (mínimo 8 caracteres):');
+  if(reason===null)return;
+  if(reason.trim().length<8){E('Justificativa com menos de 8 caracteres.');return;}
+  if(!window.confirm('Arquivar permanentemente o acesso? Histórico financeiro será preservado. Não há restauração automática.'))return;
+  B(true);E('');MSG('');
+  try{
+    await api(`/admin/tenants/${t.id}/archive`,{method:'POST',body:JSON.stringify({confirmSlug:confirmed,reason:reason.trim()})});
+    D(null);MSG('Estabelecimento arquivado; histórico preservado.');await load();
+  }catch(error){E((error as Error).message)}finally{B(false)}
+ }
  function changeDays(t:TenantRow,mode:'trial'|'grant'){
   const raw=window.prompt(mode==='trial'?'Quantos dias adicionais de teste (1 a 30)?':'Quantos dias de acesso conceder manualmente (1 a 365)?');
   if(raw===null)return;
@@ -216,7 +230,7 @@ export default function AdminPage(){
     <div className="ad-detail-box"><h3>Proprietário</h3><p><Users size={16}/> {detail.owner.name}</p><p>{detail.owner.email}</p><p><Phone size={16}/> {detail.owner.phone||'WhatsApp não informado'}</p>{detail.owner.phone&&<a className="ad-action" href={whatsappUrl(detail.owner.phone,`Olá, ${detail.owner.name}! Aqui é do suporte Vezora.`)} target="_blank" rel="noreferrer"><MessageCircle size={16}/> Conversar no WhatsApp</a>}</div>
     <div className="ad-detail-box"><h3>Dados operacionais</h3><div className="ad-setting-row"><span>Serviços</span><strong>{detail._count.services}</strong></div><div className="ad-setting-row"><span>Profissionais</span><strong>{detail._count.professionals}</strong></div><div className="ad-setting-row"><span>Reservas</span><strong>{detail._count.bookings}</strong></div><div className="ad-setting-row"><span>Teste iniciado</span><strong>{dt(detail.trialStartsAt)}</strong></div><div className="ad-setting-row"><span>Vencimento pago</span><strong>{dt(detail.subscriptionEndsAt)}</strong></div><div className="ad-setting-row"><span>Extensão de teste</span><strong>{detail.trialExtensionDays??0} dias</strong></div><div className="ad-setting-row"><span>Mercado Pago</span><strong>{detail.paymentAccount?'Conectado':'Não conectado'}</strong></div></div>
     <div className="ad-detail-box"><h3>Desempenho financeiro</h3><p className="ad-muted">Relatórios e indicadores por período, com opção de exportação em PDF e CSV.</p><button className="ad-primary" disabled={busy} onClick={()=>openFinanceFor(detail)}><BarChart3 size={17}/> Ver relatório financeiro</button></div>
-    <div className="ad-detail-box"><h3>Gerenciamento de acesso</h3><p className="ad-muted">Todas as alterações são registradas em auditoria. Não geram pagamento fictício.</p><div className="ad-detail-actions"><button disabled={busy} onClick={()=>changeDays(detail,'trial')}><Clock3 size={17}/> Estender teste</button><button disabled={busy} onClick={()=>changeDays(detail,'grant')}><CalendarPlus size={17}/> Conceder acesso</button><button className={detail.suspendedAt?'ad-restore':'ad-danger'} disabled={busy} onClick={()=>changeSuspension(detail)}>{detail.suspendedAt?<Check size={17}/>:<Ban size={17}/>} {detail.suspendedAt?'Reativar estabelecimento':'Suspender estabelecimento'}</button><Link target="_blank" href={`/${detail.slug}`}><ExternalLink size={17}/> Abrir página pública</Link></div>{detail.suspensionReason&&<p className="ad-error-note">Motivo da suspensão: {detail.suspensionReason}</p>}</div>
+    <div className="ad-detail-box"><h3>Gerenciamento de acesso</h3><p className="ad-muted">Todas as alterações são registradas em auditoria. Não geram pagamento fictício.</p><div className="ad-detail-actions"><button disabled={busy} onClick={()=>changeDays(detail,'trial')}><Clock3 size={17}/> Estender teste</button><button disabled={busy} onClick={()=>changeDays(detail,'grant')}><CalendarPlus size={17}/> Conceder acesso</button><button className={detail.suspendedAt?'ad-restore':'ad-danger'} disabled={busy} onClick={()=>changeSuspension(detail)}>{detail.suspendedAt?<Check size={17}/>:<Ban size={17}/>} {detail.suspendedAt?'Reativar estabelecimento':'Suspender estabelecimento'}</button><Link target="_blank" href={`/${detail.slug}`}><ExternalLink size={17}/> Abrir página pública</Link><button className="ad-danger" disabled={busy} onClick={()=>void archiveTenant(detail)}><Ban size={17}/> Arquivar estabelecimento</button></div>{detail.suspensionReason&&<p className="ad-error-note">Motivo da suspensão: {detail.suspensionReason}</p>}</div>
     <div className="ad-detail-box"><h3>Últimas cobranças</h3>{detail.subscriptionPayments?.length?detail.subscriptionPayments.map(p=><div className="ad-setting-row" key={p.id}><div><strong>{brl(p.amountCents)}</strong><small>{dt(p.createdAt)}</small></div><Badge value={p.status}/></div>):<p className="ad-muted">Nenhuma cobrança registrada.</p>}</div>
   </div></aside></div>}
  </div>;

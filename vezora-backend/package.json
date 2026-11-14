@@ -1,6 +1,6 @@
 {
   "name": "vezora-backend",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",

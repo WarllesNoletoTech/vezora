@@ -50,8 +50,11 @@ function auth(req: Authed, _res: Response, next: NextFunction) {
   try {
     const payload = jwt.verify(req.cookies?.vezora_session || '',env.JWT_SECRET,{issuer:'vezora'}) as jwt.JwtPayload;
     if (typeof payload.sub !== 'string') fail(401,'Sessão inválida');
-    req.userId = payload.sub;
-    next();
+    // Bloqueia sessões antigas de contas removidas ou arquivadas.
+    void db.user.findUnique({where:{id:payload.sub},select:{id:true,deletedAt:true}}).then(user=>{
+      if(!user || user.deletedAt){next(Object.assign(new Error('Sessão encerrada. Entre novamente.'),{status:401}));return;}
+      req.userId=user.id;next();
+    }).catch(next);
   } catch { next(Object.assign(new Error('Entre na sua conta'),{status:401})); }
 }
 function session(res: Response, id: string) {
@@ -60,7 +63,7 @@ function session(res: Response, id: string) {
 }
 async function myTenant(req: Authed) {
   const tenant = await db.tenant.findUnique({where:{ownerId:req.userId!}});
-  if (!tenant) fail(404,'Estabelecimento não encontrado');
+  if (!tenant || tenant.archivedAt) fail(404,'Estabelecimento não encontrado');
   return tenant!;
 }
 const cleanUrl = z.union([z.literal(''), z.string().url().max(600).refine(v=>v.startsWith('https://')||(env.NODE_ENV!=='production'&&v.startsWith('http://localhost:')),{message:'Informe uma URL HTTPS válida'})]);
@@ -81,10 +84,15 @@ function subscriptionGuard(req:Authed,_res:Response,next:NextFunction){
 const accountData = z.object({name,phone,email:z.string().trim().toLowerCase().email(),password:z.string().min(8).max(128)});
 
 app.get('/',(_req,res)=>res.json({name:'Vezora API',status:'online',health:'/api/health'}));
-app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'1.0.4'});});
+app.get('/api/health',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok',name:'Vezora API',version:'1.0.9'});});
 app.get('/api/platform/public-settings',wrap(async(_req,res)=>{const s=await platformSettings();res.json({trialDays:s.trialDays});}));
 app.post('/api/auth/register',wrap(async(req,res)=>{
   const body=accountData.extend({business:name,slug,businessType:businessTypeSchema}).strict().parse(req.body);
+  // Confere emails legados com grafias diferentes; o indice unico impede corridas.
+  const exists=await db.user.findFirst({where:{email:{equals:body.email,mode:'insensitive'}},select:{id:true}});
+  if(exists)fail(409,'Este e-mail já possui cadastro. Entre na sua conta ou use outro e-mail.');
+  const takenSlug=await db.tenant.findUnique({where:{slug:body.slug},select:{id:true}});
+  if(takenSlug)fail(409,'Este link de agendamento já está em uso. Escolha outro.');
   const hash=await bcrypt.hash(body.password,12);
   const settings=await platformSettings();
   const user=await db.$transaction(async tx=>{
@@ -98,8 +106,10 @@ app.post('/api/auth/register',wrap(async(req,res)=>{
 }));
 app.post('/api/auth/login',wrap(async(req,res)=>{
   const body=z.object({email:z.string().email(),password:z.string()}).parse(req.body);
-  const user=await db.user.findUnique({where:{email:body.email.toLowerCase().trim()}});
-  if (!user || !(await bcrypt.compare(body.password,user.passwordHash))) fail(401,'E-mail ou senha inválidos');
+  const matches=await db.user.findMany({where:{email:{equals:body.email.toLowerCase().trim(),mode:'insensitive'}},take:2});
+  if(matches.length>1)fail(409,'Há cadastros antigos duplicados com este e-mail. Solicite conferência ao suporte.');
+  const user=matches[0];
+  if (!user || user.deletedAt || !(await bcrypt.compare(body.password,user.passwordHash))) fail(401,'E-mail ou senha inválidos');
   session(res,user!.id);res.json({ok:true});
 }));
 app.post('/api/auth/logout',(_req,res)=>{
@@ -193,9 +203,9 @@ app.delete('/api/tenant/media/:kind',auth,subscriptionGuard,wrap(async(req,res)=
 app.get('/api/media/:tenantId/:kind/:fileId',wrap(async(req,res)=>{
  const tenantId=String(req.params.tenantId),kind=mediaKind(String(req.params.kind)),fileId=String(req.params.fileId);
  if(!/^[a-f0-9-]{36}$/i.test(tenantId))fail(404,'Imagem não encontrada');
- const tenant=await db.tenant.findUnique({where:{id:tenantId},select:{logoUrl:true,coverUrl:true}});
+ const tenant=await db.tenant.findUnique({where:{id:tenantId},select:{logoUrl:true,coverUrl:true,archivedAt:true}});
  const current=kind==='logo'?tenant?.logoUrl:tenant?.coverUrl;
- if(!current||extractMediaId(current,tenantId,kind)!==fileId)fail(404,'Imagem não encontrada');
+ if(tenant?.archivedAt || !current||extractMediaId(current,tenantId,kind)!==fileId)fail(404,'Imagem não encontrada');
  const image=await findTenantMedia(tenantId,kind,fileId);
  if(!image)fail(404,'Imagem não encontrada');
  res.setHeader('Content-Type',image.mime);
@@ -252,7 +262,7 @@ app.post('/api/notifications/test',auth,subscriptionGuard,rateLimit({windowMs:15
 }));
 app.get('/api/bookings',auth,subscriptionGuard,wrap(async(req,res)=>{
   const t=await myTenant(req);
-  const rows=await db.booking.findMany({where:{tenantId:t.id,startAt:{gte:DateTime.utc().minus({days:30}).toJSDate()}},include:{service:{select:{name:true,priceCents:true}},professional:{select:{name:true}},receipts:{orderBy:{createdAt:'desc'}}},orderBy:{startAt:'asc'},take:250});
+  const rows=await db.booking.findMany({where:{tenantId:t.id,service:{is:{tenantId:t.id}},professional:{is:{tenantId:t.id}},startAt:{gte:DateTime.utc().minus({days:30}).toJSDate()}},include:{service:{select:{name:true,priceCents:true}},professional:{select:{name:true}},receipts:{orderBy:{createdAt:'desc'}}},orderBy:{startAt:'asc'},take:250});
   res.json(rows);
 }));
 app.patch('/api/bookings/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
@@ -267,17 +277,17 @@ app.patch('/api/bookings/:id',auth,subscriptionGuard,wrap(async(req,res)=>{
 }));
 
 app.get('/api/public/:slug',wrap(async(req,res)=>{
-  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,primaryColor:true,secondaryColor:true,timezone:true,businessType:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,suspendedAt:true,subscriptionEndsAt:true,paymentAccount:{select:{id:true}},services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
-  if(!t) fail(404,'Estabelecimento não encontrado');
+  const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)},select:{id:true,name:true,slug:true,bio:true,whatsapp:true,instagram:true,address:true,logoUrl:true,coverUrl:true,archivedAt:true,primaryColor:true,secondaryColor:true,timezone:true,businessType:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,suspendedAt:true,subscriptionEndsAt:true,paymentAccount:{select:{id:true}},services:{where:{active:true},select:{id:true,name:true,description:true,priceCents:true,durationMin:true,depositMode:true,depositValue:true}},professionals:{where:{active:true},select:{id:true,name:true,photoUrl:true}}}});
+  if(!t || t.archivedAt) fail(404,'Estabelecimento não encontrado');
   const {paymentAccount,...publicData}=t;
   const state=billingState(t);
-  const {trialStartsAt,trialDays,trialExtensionDays,suspendedAt,subscriptionEndsAt,...safe}=publicData;
+  const {trialStartsAt,trialDays,trialExtensionDays,suspendedAt,subscriptionEndsAt,archivedAt,...safe}=publicData;
   res.json({...safe,paymentAvailable:!!paymentAccount&&mpReady(),bookingEnabled:state.status==='TRIAL'||state.status==='ACTIVE'});
 }));
 app.get('/api/public/:slug/availability',wrap(async(req,res)=>{
   const params=z.object({serviceId:z.string().uuid(),professionalId:z.string().uuid(),date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(req.query);
   const t=await db.tenant.findUnique({where:{slug:String(req.params.slug)}});
-  if(!t) fail(404,'Estabelecimento não encontrado');
+  if(!t || t.archivedAt) fail(404,'Estabelecimento não encontrado');
   if(!hasAccess(t)) fail(402,'Este estabelecimento não está recebendo agendamentos no momento.');
   const [s,p]=await Promise.all([
     db.service.findFirst({where:{id:params.serviceId,tenantId:t!.id,active:true}}),
@@ -297,7 +307,7 @@ const bookingInput=z.object({serviceId:z.string().uuid(),professionalId:z.string
 app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
   const p=bookingInput.parse(req.body);
   const tenant=await db.tenant.findUnique({where:{slug:String(req.params.slug)}});
-  if(!tenant) fail(404,'Estabelecimento não encontrado');
+  if(!tenant || tenant.archivedAt) fail(404,'Estabelecimento não encontrado');
   if(!hasAccess(tenant)) fail(402,'Este estabelecimento não está recebendo agendamentos no momento.');
   const [service,prof]=await Promise.all([
     db.service.findFirst({where:{id:p.serviceId,tenantId:tenant!.id,active:true}}),
@@ -362,8 +372,8 @@ app.post('/api/public/:slug/bookings',wrap(async(req,res)=>{
   }
 }));
 app.get('/api/booking-status/:id',wrap(async(req,res)=>{
-  const b=await db.booking.findUnique({where:{id:String(req.params.id)},select:{status:true,startAt:true,depositCents:true,paymentStatus:true,checkoutUrl:true,expiresAt:true,tenant:{select:{timezone:true,slug:true,name:true}}}});
-  if(!b) fail(404,'Reserva não encontrada');
+  const b=await db.booking.findUnique({where:{id:String(req.params.id)},select:{status:true,startAt:true,depositCents:true,paymentStatus:true,checkoutUrl:true,expiresAt:true,tenant:{select:{timezone:true,slug:true,name:true,archivedAt:true}}}});
+  if(!b || b.tenant.archivedAt) fail(404,'Reserva não encontrada');
   const isExpired=b.status==='PENDING_PAYMENT'&&!!b.expiresAt&&b.expiresAt<new Date();
   res.json({...b,status:isExpired?'EXPIRED':b.status,checkoutUrl:isExpired?null:b.checkoutUrl});
 }));
@@ -372,6 +382,8 @@ app.get('/api/booking-status/:id',wrap(async(req,res)=>{
 const reconcileLimiter=rateLimit({windowMs:15*60_000,limit:6,standardHeaders:'draft-7',legacyHeaders:false});
 app.post('/api/booking-status/:id/reconcile',reconcileLimiter,wrap(async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id);
+  const bookingScope=await db.booking.findUnique({where:{id},select:{tenant:{select:{archivedAt:true}}}});
+  if(!bookingScope || bookingScope.tenant.archivedAt)fail(404,'Reserva não encontrada');
   const result=await recoverMarketplaceBooking(id);
   if(result.reason==='booking_not_found') fail(404,'Reserva não encontrada');
   const booking=await db.booking.findUnique({where:{id},select:{status:true,paymentStatus:true,depositPaidAt:true}});
@@ -543,7 +555,10 @@ app.use((err:unknown,req:Request,res:Response,_next:NextFunction)=>{
     ? req.get('x-request-id')! : randomUUID();
   res.setHeader('x-request-id',requestId);
   if(err instanceof ZodError){res.status(400).json({error:err.issues.map(e=>e.message).join('; ')});return;}
-  if(err instanceof Prisma.PrismaClientKnownRequestError && err.code==='P2002'){res.status(409).json({error:'Já existe um registro com esses dados'});return;}
+  if(err instanceof Prisma.PrismaClientKnownRequestError && err.code==='P2002'){
+    const index=JSON.stringify(err.meta?.target||'').toLowerCase();
+    res.status(409).json({error:index.includes('email')?'Este e-mail já possui cadastro. Entre na sua conta ou use outro e-mail.':index.includes('slug')?'Este link de agendamento já está em uso. Escolha outro.':'Já existe um registro com esses dados.'});return;
+  }
   if(err instanceof Prisma.PrismaClientKnownRequestError && err.code==='P2034'){res.status(409).json({error:'Conflito de agendamento. Tente novamente'});return;}
   const e=err as {status?:number,message?:string,code?:string,name?:string};
   const status=e.status&&e.status>=400&&e.status<600?e.status:500;

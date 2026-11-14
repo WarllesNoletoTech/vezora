@@ -11,6 +11,8 @@ export const pushConfigured=()=>Boolean(process.env.ONESIGNAL_APP_ID && process.
 export async function sendOwnerPush(ownerId:string,event:string,bookingId:string,heading:string,body:string):Promise<boolean>{
  if(!pushConfigured())return false;
  try{
+  const owner=await db.user.findUnique({where:{id:ownerId},select:{deletedAt:true}});
+  if(!owner || owner.deletedAt)return false;
   const response=await fetch('https://api.onesignal.com/notifications',{
    method:'POST',headers:{Authorization:`Key ${process.env.ONESIGNAL_REST_API_KEY}`,'Content-Type':'application/json'},
    body:JSON.stringify({app_id:process.env.ONESIGNAL_APP_ID,include_aliases:{external_id:[ownerId]},target_channel:'push',

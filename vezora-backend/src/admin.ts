@@ -19,7 +19,7 @@ const paging=z.coerce.number().int().min(1).max(100000).default(1);
 const query=z.string().trim().max(90).default('');
 const reason=z.string().trim().min(8,'Informe uma justificativa com 8 caracteres ou mais').max(240);
 const perPage=15;
-const summaryTenantSelect={id:true,businessType:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,subscriptionEndsAt:true,suspendedAt:true,createdAt:true} as const;
+const summaryTenantSelect={id:true,archivedAt:true,businessType:true,trialStartsAt:true,trialDays:true,trialExtensionDays:true,subscriptionEndsAt:true,suspendedAt:true,createdAt:true} as const;
 async function audit(actorId:string,action:string,tenantId:string|undefined,details:string){
   await db.adminAuditLog.create({data:{actorId,action,tenantId,details:details.slice(0,600)}});
 }
@@ -37,8 +37,8 @@ router.get('/summary',run(async(_req,res)=>{
   ]);
   const statusCounts:Record<string,number>={ACTIVE:0,TRIAL:0,EXPIRED:0,ONBOARDING:0,SUSPENDED:0};
   const types:Record<string,number>={};
-  for(const t of tenants){const st=accessPeriod(t).status;statusCounts[st]=(statusCounts[st]||0)+1;types[t.businessType||'PENDENTE']=(types[t.businessType||'PENDENTE']||0)+1;}
-  res.json({totalTenants:tenants.length,totalOwners:owners-admins,totalBookings:bookings,newTenants30:tenants.filter(t=>t.createdAt>=new Date(Date.now()-30*86400000)).length,
+  for(const t of tenants.filter(t=>!t.archivedAt)){const st=accessPeriod(t).status;statusCounts[st]=(statusCounts[st]||0)+1;types[t.businessType||'PENDENTE']=(types[t.businessType||'PENDENTE']||0)+1;}
+  res.json({totalTenants:tenants.filter(t=>!t.archivedAt).length,totalOwners:owners-admins,totalBookings:bookings,newTenants30:tenants.filter(t=>!t.archivedAt&&t.createdAt>=new Date(Date.now()-30*86400000)).length,
     statusCounts,types,receivedTotalCents:receipts._sum.amountCents||0,received30Cents:received30._sum.amountCents||0,paidPaymentCount:receipts._count._all,
     latestPayments:latest,monthlyPriceCents:setting.monthlyPriceCents,trialDays:setting.trialDays});
 }));
@@ -91,13 +91,13 @@ router.get('/export/payments',run(async(_req,res)=>{
 
 router.get('/tenants',run(async(req,res)=>{
   const input=z.object({page:paging,search:query,businessType:z.string().max(40).optional()}).parse(req.query);
-  const where:Prisma.TenantWhereInput={};
+  const where:Prisma.TenantWhereInput={OR:[{archivedAt:null},{archivedAt:{isSet:false}}]};
   if(input.businessType&&input.businessType!=='TODOS'){
     const valid=['BARBEARIA','CABELEIREIRO','SALAO_BELEZA','NAIL_DESIGNER','MANICURE_PEDICURE','LASH_DESIGNER','SOBRANCELHAS','ESTETICA','MAQUIAGEM','DEPILACAO','MASSOTERAPIA','PODOLOGIA','OUTROS'];
     if(!valid.includes(input.businessType))fail(400,'Categoria inválida');
     where.businessType=input.businessType as NonNullable<Prisma.TenantWhereInput['businessType']>;
   }
-  if(input.search){const ownerFilters:Prisma.UserWhereInput[]=[{name:{contains:input.search,mode:'insensitive'}},{email:{contains:input.search,mode:'insensitive'}}];const digits=phoneDigits(input.search);if(digits.length>=3)ownerFilters.push({phone:{contains:digits}});where.OR=[{name:{contains:input.search,mode:'insensitive'}},{slug:{contains:input.search,mode:'insensitive'}},{owner:{is:{OR:ownerFilters}}}];}
+  if(input.search){const ownerFilters:Prisma.UserWhereInput[]=[{name:{contains:input.search,mode:'insensitive'}},{email:{contains:input.search,mode:'insensitive'}}];const digits=phoneDigits(input.search);if(digits.length>=3)ownerFilters.push({phone:{contains:digits}});where.AND=[{OR:[{name:{contains:input.search,mode:'insensitive'}},{slug:{contains:input.search,mode:'insensitive'}},{owner:{is:{OR:ownerFilters}}}]}];}
   const [total,items]=await Promise.all([
     db.tenant.count({where}),
     db.tenant.findMany({where,take:perPage,skip:(input.page-1)*perPage,orderBy:{createdAt:'desc'},
@@ -107,6 +107,40 @@ router.get('/tenants',run(async(req,res)=>{
   const owners=await loadOwnerMap(items);
   res.json({items:items.map(t=>{const owner=ownerPreview(t.ownerId,owners);return {...t,owner,ownerMissing:owner.ownerMissing,whatsapp:owner.phone||'',billingStatus:accessPeriod(t).status};}),page:input.page,pageSize:perPage,total});
 }));
+
+/**
+ * Arquivamento não destrutivo e auditado. Impede reaproveitar relações antigas
+ * após o registro com o mesmo e-mail e preserva pagamentos/recibos históricos.
+ */
+router.post('/tenants/:id/archive',run(async(req,res)=>{
+  const input=z.object({confirmSlug:z.string(),reason}).strict().parse(req.body);
+  const tenant=await db.tenant.findUnique({where:{id:String(req.params.id)},select:{id:true,ownerId:true,slug:true,archivedAt:true}});
+  if(!tenant)fail(404,'Estabelecimento não encontrado');
+  if(tenant.archivedAt)fail(409,'Estabelecimento já arquivado.');
+  if(input.confirmSlug!==tenant.slug)fail(400,'Confirme o link exato do estabelecimento.');
+  const owner=await db.user.findUnique({where:{id:tenant.ownerId},select:{id:true,role:true,deletedAt:true}});
+  if(!owner)fail(409,'Proprietário ausente. Confira os vínculos antes de arquivar.');
+  if(owner.role==='SUPERADMIN')fail(403,'Não é possível arquivar um administrador.');
+  const now=new Date();
+  const [openBookings,openPix,card]=await Promise.all([
+    db.booking.count({where:{tenantId:tenant.id,OR:[{status:'NEEDS_REVIEW'},{status:'PENDING_PAYMENT',OR:[{expiresAt:{gt:now}},{expiresAt:null}]}]}}),
+    db.subscriptionPayment.count({where:{tenantId:tenant.id,status:'PENDING',expiresAt:{gt:now}}}),
+    db.cardSubscription.findUnique({where:{tenantId:tenant.id},select:{status:true}})
+  ]);
+  if(openBookings||openPix||card&&['CREATING','PENDING','AUTHORIZED','PAUSED'].includes(card.status))
+    fail(409,'Existem pagamentos ou reservas pendentes. Concilie e cancele cobranças recorrentes antes de arquivar.');
+  await db.$transaction(async tx=>{
+    const current=await tx.tenant.findUnique({where:{id:tenant.id},select:{archivedAt:true}});
+    if(current?.archivedAt)fail(409,'Estabelecimento já arquivado.');
+    await tx.oAuthState.deleteMany({where:{tenantId:tenant.id}});
+    await tx.paymentAccount.deleteMany({where:{tenantId:tenant.id}});
+    await tx.tenant.update({where:{id:tenant.id},data:{archivedAt:now,suspendedAt:now,suspensionReason:'Cadastro arquivado',slug:`arquivado-${tenant.id}`}});
+    await tx.user.update({where:{id:owner.id},data:{deletedAt:now,email:`arquivado-${owner.id}@invalid.vezora.local`,phone:null}});
+    await tx.adminAuditLog.create({data:{actorId:req.userId!,tenantId:tenant.id,action:'ARCHIVE_TENANT',details:`Slug anterior: ${tenant.slug}. Motivo: ${input.reason}`}});
+  });
+  res.json({ok:true,archived:true,message:'Estabelecimento arquivado. E-mail liberado e histórico financeiro preservado.'});
+}));
+
 router.get('/tenants/:id',run(async(req,res)=>{
   const t=await db.tenant.findUnique({where:{id:String(req.params.id)},select:{
     ...summaryTenantSelect,ownerId:true,name:true,slug:true,suspensionReason:true,
