@@ -8,7 +8,13 @@ type OneSignalClient={
  login:(id:string)=>Promise<void>;
  logout:()=>Promise<void>;
  Notifications:{permission:boolean;requestPermission:()=>Promise<boolean>};
- User:{PushSubscription:{id?:string|null;optedIn?:boolean;optIn:()=>Promise<void>}};
+ User:{PushSubscription:{
+  id?:string|null;
+  optedIn?:boolean;
+  optIn:()=>Promise<void>;
+  addEventListener?:(event:'change',listener:()=>void)=>void;
+  removeEventListener?:(event:'change',listener:()=>void)=>void;
+ }};
 };
 declare global {interface Window {OneSignalDeferred?:Array<(api:OneSignalClient)=>void|Promise<void>>;VezoraPush?:OneSignalClient}}
 export type PushStatus={configured:boolean;ready:boolean;subscribed:boolean;tested:boolean};
