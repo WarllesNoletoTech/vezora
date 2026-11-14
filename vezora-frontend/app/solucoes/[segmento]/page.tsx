@@ -25,7 +25,10 @@ export default async function LandingPage({params}:Props){
  const {segmento}=await params;
  const info=landingPages[segmento as keyof typeof landingPages];
  if(!info)notFound();
+ const canonical=`${SITE_URL}/solucoes/${segmento}`;
+ const breadcrumb={'@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:[{'@type':'ListItem',position:1,name:'Início',item:SITE_URL+'/'},{'@type':'ListItem',position:2,name:info.title,item:canonical}]};
  return <main className="site">
+  <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(breadcrumb).replace(/</g,'\\u003c')}}/>
   <header className="topbar container"><Brand/><nav className="site-nav"><Link href="/">Início</Link><Link href="/#recursos">Recursos</Link><Link href="/#planos">Teste grátis</Link></nav><div className="nav-actions"><Link href="/entrar" className="link-login">Entrar</Link><Link href="/cadastro" className="btn btn-dark btn-small">Criar espaço <ArrowRight size={16}/></Link></div></header>
   <section className="hero container" style={{minHeight:'auto',paddingTop:76,paddingBottom:65}}>
    <div className="hero-copy" style={{maxWidth:810}}>
