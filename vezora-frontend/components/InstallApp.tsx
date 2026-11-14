@@ -21,7 +21,7 @@ function isStandalone() {
 
 type Platform = 'ios' | 'android' | 'desktop';
 
-export default function InstallApp({welcome = false}: {welcome?: boolean}) {
+export default function InstallApp({welcome = false, userId = 'guest'}: {welcome?: boolean; userId?: string}) {
   const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(null);
   const [visible, setVisible] = useState(false);
   const [installed, setInstalled] = useState(false);
@@ -32,8 +32,21 @@ export default function InstallApp({welcome = false}: {welcome?: boolean}) {
 
   useEffect(() => {
     const standalone = isStandalone();
-    setInstalled(standalone);
-    if (welcome && !standalone) setVisible(true);
+    const installationKey = 'vezora:pwa:installed';
+    const reminderKey = `vezora:pwa:last-reminder:${userId}`;
+    if (standalone) localStorage.setItem(installationKey, '1');
+    // Se o navegador voltou a oferecer a instalação, um marcador antigo pode estar obsoleto.
+    if (!standalone && window.__vezoraInstallPrompt) localStorage.removeItem(installationKey);
+    const knownInstalled = localStorage.getItem(installationKey) === '1';
+    setInstalled(standalone || knownInstalled);
+    if (!standalone && !knownInstalled) {
+      const lastReminder = Number(localStorage.getItem(reminderKey)||'0');
+      // Reoferecer após 24 h, evitando interromper cada navegação.
+      if (welcome || !lastReminder || Date.now()-lastReminder >= 24*60*60*1000) {
+        setVisible(true);
+        localStorage.setItem(reminderKey, String(Date.now()));
+      }
+    }
 
     const agent = navigator.userAgent;
     if (/iPad|iPhone|iPod/i.test(agent)) setPlatform('ios');
@@ -46,15 +59,24 @@ export default function InstallApp({welcome = false}: {welcome?: boolean}) {
 
     const onReady = (event: Event) => {
       event.preventDefault();
+      const previouslyInstalled = localStorage.getItem('vezora:pwa:installed') === '1';
+      localStorage.removeItem('vezora:pwa:installed');
+      setInstalled(false);
+      if (previouslyInstalled) setVisible(true);
       setPromptEvent(event as InstallPromptEvent);
       setFeedback('');
     };
     const onEarlyReady = () => {
-      if (window.__vezoraInstallPrompt) setPromptEvent(window.__vezoraInstallPrompt);
+      if (window.__vezoraInstallPrompt) {
+        localStorage.removeItem('vezora:pwa:installed');
+        setInstalled(false);
+        setPromptEvent(window.__vezoraInstallPrompt);
+      }
     };
     const onInstalled = () => {
       window.__vezoraInstallPrompt = null;
       setPromptEvent(null);
+      localStorage.setItem('vezora:pwa:installed','1');
       setInstalled(true);
       setVisible(false);
       setShowManual(false);
@@ -67,7 +89,7 @@ export default function InstallApp({welcome = false}: {welcome?: boolean}) {
       window.removeEventListener('vezora:install-ready', onEarlyReady);
       window.removeEventListener('appinstalled', onInstalled);
     };
-  }, [welcome]);
+  }, [welcome, userId]);
 
   useEffect(() => {
     if (!visible) return;
@@ -79,7 +101,7 @@ export default function InstallApp({welcome = false}: {welcome?: boolean}) {
   }, [visible]);
 
   async function install() {
-    if (installing) return;
+    if (installing || isStandalone()) return;
     const event = promptEvent ?? window.__vezoraInstallPrompt;
     if (!event) {
       // Chrome, Safari e iOS nem sempre disponibilizam a instalação por JavaScript.

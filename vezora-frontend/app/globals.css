@@ -531,3 +531,22 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .vezora-install-guide p{display:flex;align-items:flex-start;gap:7px;margin:10px 0 0;font-size:11px;line-height:1.45}
 .vezora-install-guide p svg{flex:none;color:#178454}
 @media(max-width:600px){.vezora-install-dialog{gap:10px}.vezora-install-primary{min-height:48px}}
+
+/* Vezora v1.0.6 — sexto passo com ativação e teste OneSignal */
+.vezora-steps-list>.vezora-step-entry>button{width:100%;display:flex;align-items:center;gap:12px;min-height:64px;text-align:left;padding:12px;border-radius:12px;background:#fff;border:1px solid #e6ebef;color:#172737;cursor:pointer}
+.vezora-steps-list>.vezora-step-entry>button:hover{background:#f2f8fb;border-color:#a7c5d6}
+.vezora-step-entry>button>span:nth-child(2){flex:1;min-width:0}
+.vezora-step-entry>button b{display:block;font-size:13px}
+.vezora-step-entry>button small{display:block;color:#647783;font-size:11px;margin-top:3px;line-height:1.5}
+.vezora-push-inline-expanded{border:1px solid #dcecf3;background:#f6fbfd;border-radius:12px;padding:16px;margin-top:8px}
+.vezora-push-inline-collapsed{display:none}
+.vezora-firststeps-push{background:#f7fbfe;border-radius:12px;padding:14px 15px;border:1px solid #e0eaf0;margin-top:8px}
+.vezora-push-explanation{display:flex;gap:10px;color:#21526b;align-items:flex-start}
+.vezora-push-explanation svg{flex:none}
+.vezora-push-explanation b{font-size:13px}
+.vezora-push-explanation p{font-size:12px;line-height:1.6;margin:6px 0 0}
+.vezora-push-action-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.vezora-push-setup{display:grid;justify-items:start;gap:10px}
+.vezora-push-setup .vezora-push-on{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#1d7953;font-weight:700}
+.vezora-push-setup p{line-height:1.55;margin:0}
+@media(max-width:600px){.vezora-push-inline-expanded{padding:12px}.vezora-push-action-row{align-items:stretch;flex-direction:column}.vezora-push-action-row button{justify-content:center}}
