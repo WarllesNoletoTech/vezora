@@ -30,6 +30,7 @@ model Tenant {
   address        String         @default("")
   logoUrl        String         @default("")
   coverUrl       String         @default("")
+  onboardingCompletedAt DateTime? // Guia inicial concluido, persistido para outros aparelhos
   primaryColor   String         @default("#8F5176")
   secondaryColor String         @default("#211925")
   timezone       String         @default("America/Sao_Paulo")

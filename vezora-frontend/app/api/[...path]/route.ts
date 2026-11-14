@@ -70,7 +70,8 @@ async function proxy(request: Request, context: Context): Promise<Response> {
       return responseError(502, 'O servidor Heroku esta indisponivel. Confira o status do dyno e os logs do backend.');
     }
 
-    const outHeaders = new Headers({ 'Cache-Control': 'no-store', 'x-request-id': upstream.headers.get('x-request-id')||requestId });
+    const publicImage = request.method === 'GET' && path[0] === 'media' && upstream.ok && contentType.startsWith('image/');
+    const outHeaders = new Headers({ 'Cache-Control': publicImage ? 'public, max-age=3600' : 'no-store', 'x-request-id': upstream.headers.get('x-request-id')||requestId });
     for (const name of ['content-type', 'content-disposition', 'location', 'set-cookie']) {
       const value = upstream.headers.get(name);
       if (value) outHeaders.set(name, value);

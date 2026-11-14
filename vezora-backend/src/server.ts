@@ -23,6 +23,7 @@ import {financialRoutes} from './financeRoutes';
 import {commissionFor} from './finance';
 import {notifyBooking,sendOwnerPush,pushConfigured} from './notifications';
 import {startCardSubscription,cardSubscriptionStatus,cancelCardSubscription,reconcileCardInvoice,updateCardSubscriptionFromProvider} from './cardSubscriptions';
+import {MAX_MEDIA_BYTES,saveTenantMedia,findTenantMedia,mediaUrl,extractMediaId,deleteTenantMedia,type MediaKind} from './media';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -62,7 +63,7 @@ async function myTenant(req: Authed) {
   if (!tenant) fail(404,'Estabelecimento não encontrado');
   return tenant!;
 }
-const cleanUrl = z.union([z.literal(''), z.string().url().startsWith('https://').max(600)]);
+const cleanUrl = z.union([z.literal(''), z.string().url().max(600).refine(v=>v.startsWith('https://')||(env.NODE_ENV!=='production'&&v.startsWith('http://localhost:')),{message:'Informe uma URL HTTPS válida'})]);
 const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 const name = z.string().trim().min(2).max(90);
 const reservedSlugs=new Set(['admin','api','painel','cadastro','entrar','assinatura','agendamento','atualizar-cadastro','favicon.ico']);
@@ -146,6 +147,63 @@ app.patch('/api/tenant',auth,subscriptionGuard,wrap(async(req,res)=>{
     timezone:z.enum(['America/Sao_Paulo','America/Belem','America/Manaus','America/Cuiaba','America/Recife','America/Fortaleza','America/Rio_Branco']).optional()
   }).strict().parse(req.body);
   res.json(await db.tenant.update({where:{id:tenant.id},data:update}));
+}));
+
+// Conclusao do checklist mantida na conta, inclusive em outro navegador/PWA.
+app.patch('/api/tenant/checklist/complete',auth,subscriptionGuard,wrap(async(req,res)=>{
+ const tenant=await myTenant(req);
+ const updated=await db.tenant.update({where:{id:tenant.id},data:{onboardingCompletedAt:tenant.onboardingCompletedAt||new Date()}});
+ res.json({completedAt:updated.onboardingCompletedAt});
+}));
+
+// Upload direto e persistente no MongoDB GridFS. Apenas o dono autenticado pode modificar a marca.
+// Upload binário (sem base64) com limite inferior ao máximo de request da Vercel.
+const imageBody=express.raw({type:['image/jpeg','image/png','image/webp'],limit:'3.2mb'});
+function mediaKind(value:string):MediaKind{
+ if(value!=='logo'&&value!=='cover')fail(400,'Tipo de imagem inválido');
+ return value as MediaKind;
+}
+app.put('/api/tenant/media/:kind',auth,subscriptionGuard,imageBody,wrap(async(req,res)=>{
+ const kind=mediaKind(String(req.params.kind));
+ const buffer=req.body;
+ if(!Buffer.isBuffer(buffer))fail(415,'Envie uma imagem JPEG, PNG ou WebP');
+ if(buffer.length>MAX_MEDIA_BYTES[kind])fail(413,kind==='logo'?'A logo deve ter até 1,5 MB':'A capa deve ter até 3 MB');
+ const mime=String(req.headers['content-type']||'').split(';')[0].toLowerCase();
+ const tenant=await myTenant(req);
+ const previous=kind==='logo'?tenant.logoUrl:tenant.coverUrl;
+ const media=await saveTenantMedia(tenant.id,kind,buffer,mime);
+ const url=mediaUrl(tenant.id,kind,media.fileId);
+ try{
+  await db.tenant.update({where:{id:tenant.id},data:kind==='logo'?{logoUrl:url}:{coverUrl:url}});
+ }catch(error){await deleteTenantMedia(media.fileId);throw error;}
+ const previousId=extractMediaId(previous,tenant.id,kind);
+ if(previousId)void deleteTenantMedia(previousId);
+ res.status(201).json({url,kind});
+}));
+app.delete('/api/tenant/media/:kind',auth,subscriptionGuard,wrap(async(req,res)=>{
+ const kind=mediaKind(String(req.params.kind));
+ const tenant=await myTenant(req);
+ const previous=kind==='logo'?tenant.logoUrl:tenant.coverUrl;
+ await db.tenant.update({where:{id:tenant.id},data:kind==='logo'?{logoUrl:''}:{coverUrl:''}});
+ const previousId=extractMediaId(previous,tenant.id,kind);
+ if(previousId)void deleteTenantMedia(previousId);
+ res.json({url:'',kind});
+}));
+// Exibição pública apenas de imagens atualmente associadas ao respectivo lojista.
+app.get('/api/media/:tenantId/:kind/:fileId',wrap(async(req,res)=>{
+ const tenantId=String(req.params.tenantId),kind=mediaKind(String(req.params.kind)),fileId=String(req.params.fileId);
+ if(!/^[a-f0-9-]{36}$/i.test(tenantId))fail(404,'Imagem não encontrada');
+ const tenant=await db.tenant.findUnique({where:{id:tenantId},select:{logoUrl:true,coverUrl:true}});
+ const current=kind==='logo'?tenant?.logoUrl:tenant?.coverUrl;
+ if(!current||extractMediaId(current,tenantId,kind)!==fileId)fail(404,'Imagem não encontrada');
+ const image=await findTenantMedia(tenantId,kind,fileId);
+ if(!image)fail(404,'Imagem não encontrada');
+ res.setHeader('Content-Type',image.mime);
+ res.setHeader('Content-Length',image.length);
+ res.setHeader('Cache-Control','public,max-age=3600');
+ res.setHeader('X-Content-Type-Options','nosniff');
+ image.stream.on('error',()=>res.destroy());
+ image.stream.pipe(res);
 }));
 
 const serviceFields=z.object({name,description:z.string().max(500).default(''),priceCents:z.number().int().min(0).max(10_000_000),durationMin:z.number().int().min(15).max(720),depositMode:z.nativeEnum(DepositMode).default('NONE'),depositValue:z.number().int().min(0).max(10_000_000).default(0),active:z.boolean().default(true)});

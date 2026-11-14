@@ -1,6 +1,6 @@
 {
   "name": "vezora-backend",
-  "version": "1.0.4",
+  "version": "1.0.7",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -31,6 +31,7 @@
     "helmet": "8.1.0",
     "jsonwebtoken": "9.0.2",
     "luxon": "3.7.2",
+    "mongodb": "^6.21.0",
     "zod": "3.25.76",
     "prisma": "6.19.0",
     "pdfkit": "0.17.2"

@@ -550,3 +550,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .vezora-push-setup .vezora-push-on{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#1d7953;font-weight:700}
 .vezora-push-setup p{line-height:1.55;margin:0}
 @media(max-width:600px){.vezora-push-inline-expanded{padding:12px}.vezora-push-action-row{align-items:stretch;flex-direction:column}.vezora-push-action-row button{justify-content:center}}
+
+/* v1.0.7 - seleção e visualização de imagens da marca */
+.vezora-image-upload{display:grid;gap:10px;border:1px solid #e4e9ef;border-radius:13px;padding:15px;background:#fafcfd}
+.vezora-image-upload-heading{display:grid;gap:4px}.vezora-image-upload-heading strong{font-size:13px}.vezora-image-upload-heading span{font-size:11px;color:#788491}
+.vezora-image-preview{background:#edf2f5;display:grid;place-items:center;overflow:hidden;border-radius:10px;border:1px solid #e4e9ed}
+.vezora-image-preview.logo{height:135px}.vezora-image-preview.cover{height:160px}.vezora-image-preview.logo img{height:100%;max-width:100%;width:auto;object-fit:contain}.vezora-image-preview.cover img{width:100%;height:100%;object-fit:cover}
+.vezora-image-empty{border:1px dashed #b5c5d0;color:#6f8190;background:#f3f7fa;border-radius:9px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:7px;font-size:11px;min-height:115px}
+.vezora-image-empty.cover{min-height:150px}.vezora-image-upload-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.vezora-image-upload-actions label{cursor:pointer;display:inline-flex;align-items:center;gap:6px}.vezora-image-upload-actions label.is-busy{opacity:.6;pointer-events:none}.vezora-image-notice{font-size:11px;color:#246c52}
+@media(max-width:600px){.vezora-image-upload{padding:12px}.vezora-image-preview.cover{height:140px}}
+
+.vezora-push-reenable{border:1px solid #d6e6ed;background:#f5fbff;border-radius:11px;padding:12px;margin-bottom:16px}.vezora-push-reenable:before{content:'Configure as notificações neste dispositivo';display:block;font-size:12px;font-weight:700;margin-bottom:8px;color:#284e62}
